@@ -232,3 +232,63 @@
 2025-10-18 18:48:07,760 - INFO - ▶️ Step 4: Attempting to post 'ئەنجامی هەڵبژاردنە پەرلەمانییە...' to Tumblr...
 2025-10-18 18:48:08,525 - ERROR -   - API call succeeded but returned no post ID. Post likely dropped.
 2025-10-18 18:48:08,525 - INFO -   - Pausing for 15 seconds before next post...
+2025-10-18 19:17:54,636 - INFO - --- Script starting ---
+2025-10-18 19:17:55,888 - INFO - Configuration set for Country='us'. Starting process...
+2025-10-18 19:17:56,831 - INFO - ✅ Tumblr client authenticated successfully.
+2025-10-18 19:17:56,831 - INFO - 
+--- Processing Category: Kurdistan (kurdistan) ---
+2025-10-18 19:17:56,840 - INFO - ▶️ Step 1: Fetching latest news for 'Kurdistan'...
+2025-10-18 19:17:58,520 - INFO - Found 98 raw articles from API. Filtering now...
+2025-10-18 19:17:59,042 - WARNING - Image check failed for https://biztoc.com/cdn/4c1183de15b18e8c_s.webp with status code 403.
+2025-10-18 19:17:59,044 - WARNING - Skipping article due to invalid image URL: 'Erdogan Threatens Operation Against Syrian Kurds If 'Integration' With Damascus Fails'
+2025-10-18 19:17:59,454 - WARNING - Image check failed for https://biztoc.com/cdn/c0f14abbf4856505_s.webp with status code 403.
+2025-10-18 19:17:59,456 - WARNING - Skipping article due to invalid image URL: 'Iraq To Restart Kurdistan Oil Exports On September 27'
+2025-10-18 19:17:59,881 - WARNING - Image check failed for https://biztoc.com/cdn/22e42083f0f840bb_s.webp with status code 403.
+2025-10-18 19:17:59,883 - WARNING - Skipping article due to invalid image URL: 'Violent hatred flares between Kurdish cousins'
+2025-10-18 19:18:00,357 - WARNING - Image check failed for https://biztoc.com/cdn/4774a199e5a5df02_s.webp with status code 403.
+2025-10-18 19:18:00,359 - WARNING - Skipping article due to invalid image URL: 'Iraq restarts oil exports from Kurdistan region to Türkiye'
+2025-10-18 19:18:00,797 - WARNING - Image check failed for https://biztoc.com/cdn/e62a6614abceeece_s.webp with status code 403.
+2025-10-18 19:18:00,799 - WARNING - Skipping article due to invalid image URL: 'Iraq Says Kurdistan Oil Exports Likely to Resume ‘This Week’'
+2025-10-18 19:18:01,216 - WARNING - Image check failed for https://biztoc.com/cdn/5d3b9151e2093ffa_s.webp with status code 403.
+2025-10-18 19:18:01,217 - WARNING - Skipping article due to invalid image URL: 'Iraq Resumes Kurdistan Oil Exports After Halt of Two Years'
+2025-10-18 19:18:01,641 - WARNING - Image check failed for https://biztoc.com/cdn/6f625b3908d626e0_s.webp with status code 403.
+2025-10-18 19:18:01,643 - WARNING - Skipping article due to invalid image URL: 'Dispute over arrears stalls Kurdistan oil exports restart'
+2025-10-18 19:18:02,081 - WARNING - Image check failed for https://biztoc.com/cdn/f2f9d0e7708c9f4f_s.webp with status code 403.
+2025-10-18 19:18:02,083 - WARNING - Skipping article due to invalid image URL: 'Iraq’s Kurdistan and Foreign Oil Firms Agree to Resume Exports'
+2025-10-18 19:18:02,511 - WARNING - Image check failed for https://biztoc.com/cdn/1865b5f75cdf81e8_s.webp with status code 403.
+2025-10-18 19:18:02,513 - WARNING - Skipping article due to invalid image URL: 'Kurdish Fox vs Strawberry: Swedish TikTok Meme Turns Global Crime Scandal | If You're Listening'
+2025-10-18 19:18:02,940 - WARNING - Image check failed for https://biztoc.com/cdn/7a5c2646fc92fc08_s.webp with status code 403.
+2025-10-18 19:18:02,942 - WARNING - Skipping article due to invalid image URL: 'Moscow urges calm after new clashes in Syria'
+2025-10-18 19:18:05,848 - WARNING - Image check failed for https://i.abcnewsfe.com/a/265810a6-5f04-40d7-959e-69e3def1350c/wirestory_263c440d9a320949ebfe5d437087c8d5_16x9.jpg?w=1600 with status code 404.
+2025-10-18 19:18:05,849 - WARNING - Skipping article due to invalid image URL: 'Iraq says it will resume oil exports from the Kurdish region after a halt of more than 2 years'
+2025-10-18 19:18:06,268 - WARNING - Image check failed for https://biztoc.com/cdn/a621b36ced77744f_s.webp with status code 403.
+2025-10-18 19:18:06,270 - WARNING - Skipping article due to invalid image URL: 'Turkey Plans to Supply Arms to Syria, Seeks Wider Deal on Kurds'
+2025-10-18 19:18:06,690 - WARNING - Image check failed for https://biztoc.com/cdn/77bd3bfb7becfa8c_s.webp with status code 403.
+2025-10-18 19:18:06,692 - WARNING - Skipping article due to invalid image URL: 'Oil down 2% as supply concerns ease'
+2025-10-18 19:18:07,116 - WARNING - Image check failed for https://biztoc.com/cdn/9d1ae39a22e46192_s.webp with status code 403.
+2025-10-18 19:18:07,118 - WARNING - Skipping article due to invalid image URL: 'Iraq, Oil Firms Poised to Sign Deal to Restart Kurdish Exports'
+2025-10-18 19:18:07,507 - WARNING - Image check failed for https://biztoc.com/cdn/56253557fc0d2eef_s.webp with status code 403.
+2025-10-18 19:18:07,509 - WARNING - Skipping article due to invalid image URL: 'Vitol in Talks for Iraq Oil Sales Once Kurdish Pipeline Exports Restart'
+2025-10-18 19:18:07,957 - WARNING - Image check failed for https://biztoc.com/cdn/a56cc5baad9f18f5_s.webp with status code 403.
+2025-10-18 19:18:07,958 - WARNING - Skipping article due to invalid image URL: 'Iraq nears deal to restart pipeline oil exports from Kurdistan to Turkey, sources say'
+2025-10-18 19:18:08,385 - WARNING - Image check failed for https://biztoc.com/cdn/05402d6eb783934d_s.webp with status code 403.
+2025-10-18 19:18:08,387 - WARNING - Skipping article due to invalid image URL: 'Iraqi PM confirms agreement with Kurdish region to resume oil exports'
+2025-10-18 19:18:08,786 - WARNING - Image check failed for https://biztoc.com/cdn/971ac4a4d911d9b1_s.webp with status code 403.
+2025-10-18 19:18:08,788 - WARNING - Skipping article due to invalid image URL: 'Oil slips as Kurdistan crude exports resume, OPEC+ plans output hike'
+2025-10-18 19:18:09,227 - WARNING - Image check failed for https://biztoc.com/cdn/54b9ac2aaa17cd93_s.webp with status code 403.
+2025-10-18 19:18:09,229 - WARNING - Skipping article due to invalid image URL: 'Crude oil exports from Iraq's Kurdistan to restart early on Saturday - sources say'
+2025-10-18 19:18:09,655 - WARNING - Image check failed for https://biztoc.com/cdn/58e789334ed04b1a_s.webp with status code 403.
+2025-10-18 19:18:09,656 - WARNING - Skipping article due to invalid image URL: 'Iraq resumes Kurdistan oil exports to Turkey after 2-1/2 year halt, reports Rudaw'
+2025-10-18 19:18:10,058 - WARNING - Image check failed for https://biztoc.com/cdn/7dcdb0aaac2f494d_s.webp with status code 403.
+2025-10-18 19:18:10,060 - WARNING - Skipping article due to invalid image URL: 'Norway's DNO will not use newly opened pipeline from Iraq's Kurdistan'
+2025-10-18 19:18:10,502 - WARNING - Image check failed for https://biztoc.com/cdn/5a88eafa7c3ce1be_s.webp with status code 403.
+2025-10-18 19:18:10,504 - WARNING - Skipping article due to invalid image URL: 'US Seeks to Make Kurdish Oil Exports Long-Lasting After Key Deal'
+2025-10-18 19:18:10,504 - INFO - ✅ Fetch complete. Found 0 new, valid articles.
+2025-10-18 19:18:10,506 - INFO - ℹ️ No new articles to translate for this category.
+2025-10-18 19:18:10,507 - INFO - ▶️ Step 3: Sorting 127 translated articles by newest first...
+2025-10-18 19:18:10,507 - INFO - ▶️ Step 4: Attempting to post 'فەرماندەیەک ڕایگەیاند، هێزە کو...' to Tumblr...
+2025-10-18 19:18:11,196 - ERROR -   - API call succeeded but returned no post ID. Post likely dropped.
+2025-10-18 19:18:11,197 - INFO -   - Pausing for 15 seconds before next post...
+2025-10-18 19:18:26,197 - INFO - ▶️ Step 4: Attempting to post '(تورکیا) و (عێراق) دەگەنە ڕەشن...' to Tumblr...
+2025-10-18 19:18:27,014 - ERROR -   - API call succeeded but returned no post ID. Post likely dropped.
+2025-10-18 19:18:27,015 - INFO -   - Pausing for 15 seconds before next post...
