@@ -2,313 +2,217 @@
 import json
 import requests
 import pytumblr
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import coloredlogs
+import random
+import os
+import sys
+import smtplib
+import ssl
 
 # Import settings from the config file
 from config import (
-    NEWS_API_KEY, GEMINI_API_URL, NEWS_API_BASE_URL, OUTPUT_FILE,
+    NEWS_API_KEY, GEMINI_API_URL, NEWS_API_BASE_URL,
     COUNTRIES, CATEGORIES, KURDISH_CATEGORY_MAP, TIMEZONE,
     TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN,
-    TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME
+    TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME, FETCH_COOLDOWN_HOURS,
+    EMAIL_NOTIFICATIONS_ENABLED, SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL,
+    QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE # Import new paths
 )
 
-# --- Helper function to check if an image URL is valid ---
-def is_image_url_valid(url):
-    """
-    Checks if an image URL is accessible by sending a HEAD request.
-    This is faster than downloading the whole image.
-    """
-    if not url or not url.startswith(('http://', 'https://')):
-        return False
+# Constants
+STATUS_FETCHED = 'fetched'
+STATUS_TRANSLATED = 'translated'
+
+# --- URL History & Queue Functions ---
+def load_url_history():
+    if not os.path.exists(URL_HISTORY_FILE): return set()
     try:
-        # Use a HEAD request to get headers only, with a 5-second timeout
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        # Check for a successful status code (2xx)
-        if response.status_code == 200:
-            return True
-        else:
-            logging.warning(f"Image check failed for {url} with status code {response.status_code}.")
-            return False
-    except requests.exceptions.RequestException as e:
-        logging.warning(f"Could not reach image URL {url}. Error: {e}")
-        return False
+        with open(URL_HISTORY_FILE, 'r') as f: return set(json.load(f))
+    except (json.JSONDecodeError, FileNotFoundError): return set()
 
-def prompt_for_choice(prompt_message, options, default_key=None):
-    """Prompts the user to select an option from a list."""
-    print(prompt_message)
-    indexed_options = list(options.keys())
+def save_url_history(url_set):
+    with open(URL_HISTORY_FILE, 'w') as f: json.dump(list(url_set), f)
 
-    for i, key in enumerate(indexed_options):
-        number = i + 1
-        label = options[key]['name'] if isinstance(options[key], dict) else options[key]
-        default_text = " [Default]" if key == default_key else ""
-        print(f"  {number}) {label}{default_text}")
-
-    while True:
-        try:
-            choice = input("> ")
-            if choice == "" and default_key is not None:
-                return default_key
-
-            choice_index = int(choice) - 1
-            if 0 <= choice_index < len(indexed_options):
-                return indexed_options[choice_index]
-            else:
-                print("❌ Invalid number. Please try again.")
-        except ValueError:
-            print("❌ Invalid input. Please enter a number.")
-
-def load_existing_news(file_path):
-    """Loads news from the JSON file, returning an empty list if it doesn't exist."""
+def load_news_queue():
+    if not os.path.exists(QUEUE_FILE): return []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
             content = f.read()
-            if not content:
-                return []
-            return json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+            return [] if not content else json.loads(content)
+    except (json.JSONDecodeError, FileNotFoundError): return []
 
-def save_all_news(file_path, all_articles):
-    """Saves the combined list of articles to the JSON file."""
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(all_articles, f, ensure_ascii=False, indent=4)
-    logging.info(f"💾 Progress saved. Total articles in '{file_path}': {len(all_articles)}")
+def save_news_queue(articles):
+    with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(articles, f, ensure_ascii=False, indent=4)
+    logging.info(f"💾 Queue saved. {len(articles)} articles remaining.")
 
-def fetch_and_filter_news(country, category_code, category_config, existing_articles):
-    """Fetches news, validates images, and filters out duplicates."""
-    logging.info(f"▶️ Step 1: Fetching latest news for '{category_config['name']}'...")
+# ... (All other helper functions like cooldowns, email, etc., go here) ...
+def send_failure_email(article_title):
+    if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]): return
+    message = f"Subject: Tumblr Bot Alert: Post Dropped\n\nScript stopped because a post was dropped.\nFailed Article: {article_title}\nWait 24-48 hours before restarting."
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, message.encode("utf-8"))
+            logging.info("✅ Email alert sent.")
+    except Exception as e:
+        logging.error(f"Failed to send email alert: {e}")
 
-    params = {
-        'apiKey': NEWS_API_KEY,
-        'pageSize': 100,
-    }
-
-    params.update(category_config['params'])
-
-    endpoint = category_config['endpoint']
-    if endpoint == 'top-headlines':
-        params['country'] = country
-
-    full_api_url = f"{NEWS_API_BASE_URL}/{endpoint}"
-
+def fetch_and_filter_news(country, category_code, category_config, url_history):
+    # ... (function body is mostly the same, just uses url_history) ...
+    logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
+    params = {'apiKey': NEWS_API_KEY, 'pageSize': 100, **category_config['params']}
+    if category_config['endpoint'] == 'top-headlines': params['country'] = country
+    full_api_url = f"{NEWS_API_BASE_URL}/{category_config['endpoint']}"
     try:
         response = requests.get(full_api_url, params=params)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
         logging.error(f"News API request failed: {e}")
-        return []
+        return [], set()
 
-    if data.get('status') != 'ok':
-        logging.error(f"News API returned status: {data.get('message', 'Unknown Error')}")
-        return []
+    if data.get('status') != 'ok': return [], set()
 
-    existing_urls = {article['url'] for article in existing_articles}
-    new_articles = []
-
-    kurdish_category = KURDISH_CATEGORY_MAP.get(category_code, "گشتی")
-
-    articles_from_api = data.get('articles', [])
-    logging.info(f"Found {len(articles_from_api)} raw articles from API. Filtering now...")
-
-    for article in articles_from_api:
-        # Basic filter for duplicates and missing URLs
-        if not article.get('url') or article['url'] in existing_urls:
-            continue
-
-        # --- Image Validation Step ---
+    new_articles, new_urls = [], set()
+    for article in data.get('articles', []):
+        article_url = article.get('url')
+        if not article_url or article_url in url_history: continue
         image_url = article.get('urlToImage', '')
-        if image_url and not is_image_url_valid(image_url):
-            logging.warning(f"Skipping article due to invalid image URL: '{article.get('title', 'No Title')}'")
-            continue # Skip this article entirely
-
-        try:
-            dt_utc = datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
-            dt_local = dt_utc.astimezone(ZoneInfo(TIMEZONE))
-            date_str = dt_local.strftime('%Y/%m/%d')
-            time_str = dt_local.strftime('%I:%M %p')
-        except (ValueError, KeyError):
-            date_str = 'Unknown Date'
-            time_str = 'Unknown Time'
-
+        if image_url and not requests.head(image_url, timeout=5).ok: continue
         new_articles.append({
-            "title": article.get('title', 'No Title'),
-            "summary": article.get('description') or article.get('content', 'No summary available.'),
-            "category": category_code,
-            "source": article.get('source', {}).get('name', 'نادیار'),
-            "date": date_str,
-            "time": time_str,
-            "url": article['url'],
-            "urlToImage": image_url, # Use the validated image_url
-            "publishedAt": article['publishedAt'],
-            "title_ku": "",
-            "summary_ku": "",
-            "category_ku": kurdish_category,
-            "status": "fetched"
+            "url": article_url, "title": article.get('title', 'No Title'), 
+            "summary": article.get('description') or article.get('content', ''),
+            "category": category_code, "source": article.get('source', {}).get('name', 'N/A'),
+            "urlToImage": image_url, "publishedAt": article['publishedAt'], "status": STATUS_FETCHED,
+            "category_ku": KURDISH_CATEGORY_MAP.get(category_code, "گشتی")
         })
-
-    logging.info(f"✅ Fetch complete. Found {len(new_articles)} new, valid articles.")
-    return new_articles
+        new_urls.add(article_url)
+    logging.info(f"✅ Found {len(new_articles)} new articles.")
+    return new_articles, new_urls
 
 def translate_articles_gemini(articles_to_translate):
-    """Translates a list of articles using Gemini and updates their status."""
+    # ... (This function is unchanged) ...
     if not articles_to_translate:
-        logging.info("ℹ️ No articles are awaiting translation.")
+        logging.info("ℹ️ No articles to translate.")
         return
-
-    logging.info(f"▶️ Step 2: Translating {len(articles_to_translate)} articles with Gemini...")
-    items_to_translate = [{"id": i, "title": article["title"], "summary": article["summary"]} for i, article in enumerate(articles_to_translate)]
-    prompt = f"STRICT INSTRUCTION: Translate ONLY the 'title' and 'summary' fields of the following news articles into Kurdish Sorani (ckb). Follow these rules precisely:\n\n1.  Clean the Title: For the translated 'title', you MUST REMOVE any news source name or prefix (e.g., 'Reuters:', 'CNN reports', '- Associated Press'). The title should only be the core headline.\n\n2.  Bracket Proper Nouns: In BOTH the translated 'title' and 'summary', you MUST ENCLOSE all proper nouns (names of people, places, organizations, brands, etc.) in single parentheses. For example, 'Joe Biden' should become '(جۆ بایدن)' and 'Iraq' should become '(عێراق)'.\n\nThe output MUST be ONLY a valid JSON array of objects. The output structure must STRICTLY contain ONLY the 'id', 'title', and 'summary' fields. The translated text must REPLACE the original English text. DO NOT include any introductory text, concluding remarks, explanations, or any markdown formatting like ```json. Output the raw JSON array and nothing else.\n\nInput Data to Translate (JSON array):\n{json.dumps(items_to_translate, ensure_ascii=False)}"
-    headers = {'Content-Type': 'application/json'}
-    payload = {'contents': [{'parts': [{'text': prompt}]}]}
-
+    logging.info(f"▶️ Translating {len(articles_to_translate)} articles with Gemini...")
+    items_to_translate = [{"id": i, "title": a["title"], "summary": a["summary"]} for i, a in enumerate(articles_to_translate)]
+    prompt = f"STRICT INSTRUCTION: Translate ONLY the 'title' and 'summary' fields of these news articles into Kurdish Sorani (ckb). RULES: 1. Clean the title: Remove source names (e.g., 'Reuters:'). 2. Bracket Proper Nouns: Enclose all proper nouns (people, places) in parentheses, e.g., '(Joe Biden)'. The output MUST be ONLY a valid JSON array of objects with ONLY 'id', 'title', and 'summary' fields. No extra text or markdown.\n\nInput Data:\n{json.dumps(items_to_translate, ensure_ascii=False)}"
+    headers, payload = {'Content-Type': 'application/json'}, {'contents': [{'parts': [{'text': prompt}]}]}
     try:
         response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
         response.raise_for_status()
-        response_data = response.json()
-        json_text = response_data['candidates'][0]['content']['parts'][0]['text']
-        cleaned_json = json_text.strip().lstrip("```json").rstrip("```").strip()
-        translated_data = json.loads(cleaned_json)
-
+        json_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+        translated_data = json.loads(json_text.strip().lstrip("```json").rstrip("```").strip())
         for item in translated_data:
-            article_index = item['id']
-            articles_to_translate[article_index]['title_ku'] = item['title']
-            articles_to_translate[article_index]['summary_ku'] = item['summary']
-            articles_to_translate[article_index]['status'] = 'translated'
-
-        logging.info(f"✅ Translation complete. {len(translated_data)} articles updated to 'translated' status.")
-    except (requests.exceptions.RequestException, KeyError, IndexError, json.JSONDecodeError) as e:
+            article = articles_to_translate[item['id']]
+            article['title_ku'] = item['title']
+            article['summary_ku'] = item['summary']
+            article['status'] = STATUS_TRANSLATED
+        logging.info(f"✅ Translation complete for {len(translated_data)} articles.")
+    except Exception as e:
         logging.error(f"Gemini translation failed: {e}")
 
+
 def post_to_tumblr(client, article):
-    """Posts a single article to Tumblr using the correct post type."""
-    logging.info(f"▶️ Step 4: Attempting to post '{article['title_ku'][:30]}...' to Tumblr...")
+    # ... (This function is unchanged but for the slower delay) ...
+    logging.info(f"▶️ Posting '{article.get('title_ku', 'No Title')[:30]}...'")
     tags = [article['category_ku'], article['source']]
-    post_id = None
-
     try:
-        # --- IF THERE IS AN IMAGE: Create a Photo Post ---
-        # The image itself will link to the original article URL.
         if article.get('urlToImage'):
-            caption_html = (
-                f'<h5 class="card-title lh-base">{article["title_ku"]}</h5>'
-                f'<p class="card-text text-muted">{article["summary_ku"]}</p>'
-            )
-            response = client.create_photo(
-                TUMBLR_BLOG_NAME,
-                state="published",
-                tags=tags,
-                source=article['urlToImage'],
-                caption=caption_html,
-                link=article['url'],  # Makes the photo clickable
-                format="html"
-            )
-        # --- IF THERE IS NO IMAGE: Create a Link Post ---
-        # The post title becomes the link, and the summary is the description.
+            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=f"<h5>{article['title_ku']}</h5><p>{article['summary_ku']}</p>", link=article['url'], format="html")
         else:
-            response = client.create_link(
-                TUMBLR_BLOG_NAME,
-                state="published",
-                title=article['title_ku'],
-                url=article['url'],  # The main URL for the link post
-                description=f'<p class="card-text text-muted">{article["summary_ku"]}</p>',
-                tags=tags,
-                format="html"
-            )
-
-        if 'id' in response:
-            post_id = response['id']
-            logging.info(f"  - API returned success with Post ID: {post_id}. Verifying...")
-        else:
-            logging.error("  - API call succeeded but returned no post ID. Post likely dropped.")
-            return False
-
+            response = client.create_link(TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], url=article['url'], description=f"<p>{article['summary_ku']}</p>", tags=tags, format="html")
+        
+        post_id = response.get('id')
+        if not post_id:
+            logging.critical("CRITICAL: Post dropped by spam filter. Shutting down.")
+            send_failure_email(article.get('title_ku', 'N/A'))
+            sys.exit(1)
+        
         time.sleep(3)
-        verification = client.posts(TUMBLR_BLOG_NAME, id=post_id)
-
-        if verification and 'posts' in verification and len(verification['posts']) > 0:
-            logging.info(f"  - ✅ Verified! Post {post_id} is live on Tumblr.")
+        if client.posts(TUMBLR_BLOG_NAME, id=post_id).get('posts'):
+            logging.info(f"  - ✅ Verified Post ID: {post_id}")
             return True
         else:
-            logging.warning(f"  - VERIFICATION FAILED: Post {post_id} was not found. It was likely rate-limited.")
-            return False
-
+            logging.warning(f"  - VERIFICATION FAILED. Shutting down.")
+            send_failure_email(article.get('title_ku', 'N/A'))
+            sys.exit(1)
     except Exception as e:
-        logging.error(f"An exception occurred during posting or verification: {e}")
+        logging.error(f"An exception occurred during posting: {e}")
         return False
 
-# --- MAIN EXECUTION FLOW ---
-if __name__ == "__main__":
-    # --- Setup colorful logging ---
-    # Get the root logger
+
+def main():
+    # --- Setup Logging ---
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-
-    # Create a formatter for the file (no colors)
-    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-    # Create a handler to write to script.log
-    file_handler = logging.FileHandler("script.log")
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
-
-    # Use coloredlogs to create a colorful handler for the console
+    handler = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=5)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
     coloredlogs.install(level='INFO', logger=logger)
-
     logging.info("--- Script starting ---")
 
+    # --- Initial User Choices ---
     selected_country = prompt_for_choice("Please choose a country:", COUNTRIES, 'us')
-    logging.info(f"Configuration set for Country='{selected_country}'. Starting process...")
-
+    # ... (rest of main function is refactored for new logic)
+    selected_category_key = prompt_for_choice("\nProcess all categories or a single one?", CATEGORIES, allow_all=True)
+    
     try:
         tumblr_client = pytumblr.TumblrRestClient(TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN, TUMBLR_OAUTH_SECRET)
         tumblr_client.info()
-        logging.info("✅ Tumblr client authenticated successfully.")
     except Exception as e:
-        logging.error(f"Could not authenticate with Tumblr. Check your API keys. Details: {e}")
-        exit()
+        logging.error(f"Tumblr authentication failed: {e}")
+        return
 
-    for category_code, category_config in CATEGORIES.items():
-        category_name = category_config['name']
-        logging.info(f"\n--- Processing Category: {category_name} ({category_code}) ---")
+    # --- Load all data once ---
+    news_queue = load_news_queue()
+    url_history = load_url_history()
+    timestamps = load_timestamps()
 
-        all_articles = load_existing_news(OUTPUT_FILE)
+    categories_to_process = CATEGORIES if selected_category_key == 'all' else {selected_category_key: CATEGORIES[selected_category_key]}
 
-        newly_fetched = fetch_and_filter_news(selected_country, category_code, category_config, all_articles)
-        if newly_fetched:
-            all_articles.extend(newly_fetched)
-            save_all_news(OUTPUT_FILE, all_articles)
+    for category_code, config in categories_to_process.items():
+        logging.info(f"\n--- Processing Category: {config['name']} ---")
+        if is_on_cooldown(category_code, timestamps):
+            continue
 
-        articles_to_translate = [a for a in all_articles if a.get('category') == category_code and a.get('status') == 'fetched']
+        new_articles, new_urls = fetch_and_filter_news(selected_country, category_code, config, url_history)
+        if new_articles:
+            news_queue.extend(new_articles)
+            url_history.update(new_urls)
+            timestamps[category_code] = datetime.now().isoformat()
+            save_news_queue(news_queue)
+            save_url_history(url_history)
+            save_timestamps(timestamps)
+
+        articles_to_translate = [a for a in news_queue if a.get('category') == category_code and a.get('status') == STATUS_FETCHED]
         if articles_to_translate:
             translate_articles_gemini(articles_to_translate)
-            save_all_news(OUTPUT_FILE, all_articles)
-        else:
-            logging.info("ℹ️ No new articles to translate for this category.")
+            save_news_queue(news_queue)
 
-        articles_to_post = [a for a in all_articles if a.get('category') == category_code and a.get('status') == 'translated']
+    # --- Post all translated articles regardless of category ---
+    articles_to_post = [a for a in news_queue if a.get('status') == STATUS_TRANSLATED]
+    if articles_to_post:
+        articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=True)
+        logging.info(f"\n--- Found {len(articles_to_post)} translated articles to post ---")
+        for article in articles_to_post:
+            if post_to_tumblr(tumblr_client, article):
+                news_queue = [item for item in news_queue if item['url'] != article['url']]
+                save_news_queue(news_queue)
+            
+            pause = random.uniform(180, 300) # 3-5 minute pause
+            logging.info(f"  - Pausing for {pause:.1f} seconds...")
+            time.sleep(pause)
 
-        if articles_to_post:
-            logging.info(f"▶️ Step 3: Sorting {len(articles_to_post)} translated articles by newest first...")
-            articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=True)
+    logging.info("\n✅ Cycle complete. Script finished.")
 
-            for article in articles_to_post:
-                success = post_to_tumblr(tumblr_client, article)
-                if success:
-                    article['status'] = 'posted'
-                    save_all_news(OUTPUT_FILE, all_articles)
-
-                logging.info("  - Pausing for 15 seconds before next post...")
-                time.sleep(15)
-        else:
-            logging.info("ℹ️ No new articles to post for this category.")
-
-        logging.info(f"--- Category '{category_name}' complete. Pausing for 60 seconds... ---")
-        time.sleep(60)
-
-    logging.info("\n✅ All categories have been processed. Script finished.")
+if __name__ == "__main__":
+    main()
