@@ -21,7 +21,8 @@ from config import (
     TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN,
     TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME, FETCH_COOLDOWN_HOURS,
     EMAIL_NOTIFICATIONS_ENABLED, SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL,
-    QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE
+    QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE,
+    CONTACT_EMAIL, BLOG_URL # Import new variables
 )
 
 # Constants
@@ -72,11 +73,8 @@ def is_on_cooldown(category_code, timestamps):
 
 # --- Other Helper Functions ---
 def send_failure_email(article_title):
-    if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]):
-        return
-    subject = "Tumblr Bot Alert: Post Dropped"
-    body = f"The script has been automatically stopped because Tumblr dropped a post.\n\nFailed Article Title: {article_title}\n\nIt is recommended to wait 24-48 hours before running the script again."
-    message = f"Subject: {subject}\n\n{body}"
+    if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]): return
+    message = f"Subject: Tumblr Bot Alert: Post Dropped\n\nScript stopped because a post was dropped.\nFailed Article: {article_title}\nWait 24-48 hours before restarting."
     try:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -84,7 +82,7 @@ def send_failure_email(article_title):
             server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, message.encode("utf-8"))
             logging.info("✅ Email alert sent successfully.")
     except Exception as e:
-        logging.error(f"Failed to send email alert. Error: {e}")
+        logging.error(f"Failed to send email alert: {e}")
 
 def is_image_url_valid(url):
     if not url or not url.startswith(('http://', 'https://')): return False
@@ -116,11 +114,17 @@ def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False
 
 def fetch_and_filter_news(country, category_code, category_config, url_history):
     logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
+    
+    # MODIFIED: Dynamically create the User-Agent header
+    headers = {
+        'User-Agent': f'KurdishNewsBot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'
+    }
+
     params = {'apiKey': NEWS_API_KEY, 'pageSize': 100, **category_config['params']}
     if category_config['endpoint'] == 'top-headlines': params['country'] = country
     full_api_url = f"{NEWS_API_BASE_URL}/{category_config['endpoint']}"
     try:
-        response = requests.get(full_api_url, params=params)
+        response = requests.get(full_api_url, params=params, headers=headers)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
@@ -196,7 +200,6 @@ def post_to_tumblr(client, article):
         return False
 
 def main():
-    # --- Setup Logging ---
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     handler = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=5)
@@ -205,7 +208,6 @@ def main():
     coloredlogs.install(level='INFO', logger=logger)
     logging.info("--- Script starting ---")
 
-    # --- Initial User Choices ---
     selected_country = prompt_for_choice("Please choose a country:", COUNTRIES, 'us')
     selected_category_key = prompt_for_choice("\nProcess all categories or a single one?", CATEGORIES, allow_all=True)
     
@@ -216,7 +218,6 @@ def main():
         logging.error(f"Tumblr authentication failed: {e}")
         return
 
-    # --- Load all data once ---
     news_queue = load_news_queue()
     url_history = load_url_history()
     timestamps = load_timestamps()
@@ -242,7 +243,6 @@ def main():
             translate_articles_gemini(articles_to_translate)
             save_news_queue(news_queue)
 
-    # --- Post all translated articles regardless of category ---
     articles_to_post = [a for a in news_queue if a.get('status') == STATUS_TRANSLATED]
     if articles_to_post:
         articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=True)
@@ -252,7 +252,7 @@ def main():
                 news_queue = [item for item in news_queue if item['url'] != article['url']]
                 save_news_queue(news_queue)
             
-            pause = random.uniform(180, 300) # 3-5 minute pause
+            pause = random.uniform(180, 300)
             logging.info(f"  - Pausing for {pause:.1f} seconds...")
             time.sleep(pause)
 

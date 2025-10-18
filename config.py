@@ -30,9 +30,13 @@ TUMBLR_BLOG_NAME = os.getenv("TUMBLR_BLOG_NAME")
 TIMEZONE = 'Asia/Baghdad'
 FETCH_COOLDOWN_HOURS = 2
 
+# --- NEW: User-Agent Information ---
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL")
+BLOG_URL = os.getenv("BLOG_URL")
+
 # --- API Endpoints ---
 NEWS_API_BASE_URL = "https://newsapi.org/v2"
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}"
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
 
 # --- User-Selectable Options ---
 COUNTRIES = {
