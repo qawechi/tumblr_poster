@@ -75,8 +75,8 @@ CATEGORIES = {
     },
     'sports': {
         'name': 'Sports',
-        'endpoint': 'top-headlines',
-        'params': {'category': 'sports'}
+        'endpoint': 'everything',
+        'params': {'q': 'laliga OR la liga OR El Clásico OR UEFA OR fifa', 'searchIn': 'title,description'}
     },
     'technology': {
         'name': 'Technology',
