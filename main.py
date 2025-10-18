@@ -22,7 +22,7 @@ from config import (
     TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME, FETCH_COOLDOWN_HOURS,
     EMAIL_NOTIFICATIONS_ENABLED, SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL,
     QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE,
-    CONTACT_EMAIL, BLOG_URL # Import new variables
+    CONTACT_EMAIL, BLOG_URL
 )
 
 # Constants
@@ -114,24 +114,22 @@ def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False
 
 def fetch_and_filter_news(country, category_code, category_config, url_history):
     logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
-    
-    # MODIFIED: Dynamically create the User-Agent header
-    headers = {
-        'User-Agent': f'KurdishNewsBot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'
-    }
-
+    headers = {'User-Agent': f'KurdishNewsBot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'}
     params = {'apiKey': NEWS_API_KEY, 'pageSize': 100, **category_config['params']}
     if category_config['endpoint'] == 'top-headlines': params['country'] = country
     full_api_url = f"{NEWS_API_BASE_URL}/{category_config['endpoint']}"
+    
     try:
         response = requests.get(full_api_url, params=params, headers=headers)
-        response.raise_for_status()
+        response.raise_for_status() # This will raise an exception for 4xx/5xx errors
         data = response.json()
     except requests.exceptions.RequestException as e:
-        logging.error(f"News API request failed: {e}")
-        return [], set()
+        logging.error(f"A network error occurred while fetching news: {e}")
+        return [], set() # Return empty values to allow the script to continue safely
 
-    if data.get('status') != 'ok': return [], set()
+    if data.get('status') != 'ok':
+        logging.error(f"News API returned an error: {data.get('message')}")
+        return [], set()
 
     new_articles, new_urls = [], set()
     for article in data.get('articles', []):
@@ -169,8 +167,9 @@ def translate_articles_gemini(articles_to_translate):
             article['summary_ku'] = item['summary']
             article['status'] = STATUS_TRANSLATED
         logging.info(f"✅ Translation complete for {len(translated_data)} articles.")
-    except Exception as e:
-        logging.error(f"Gemini translation failed: {e}")
+    except (requests.exceptions.RequestException, KeyError, IndexError, json.JSONDecodeError) as e:
+        logging.error(f"Gemini translation failed: {e}. Will retry on the next cycle.")
+        # We don't return here, allowing the script to continue with other tasks
 
 def post_to_tumblr(client, article):
     logging.info(f"▶️ Posting '{article.get('title_ku', 'No Title')[:30]}...'")
@@ -215,7 +214,7 @@ def main():
         tumblr_client = pytumblr.TumblrRestClient(TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN, TUMBLR_OAUTH_SECRET)
         tumblr_client.info()
     except Exception as e:
-        logging.error(f"Tumblr authentication failed: {e}")
+        logging.error(f"Tumblr authentication failed: {e}. Exiting.")
         return
 
     news_queue = load_news_queue()
