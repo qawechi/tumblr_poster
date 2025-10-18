@@ -32,7 +32,7 @@ FETCH_COOLDOWN_HOURS = 2
 
 # --- API Endpoints ---
 NEWS_API_BASE_URL = "https://newsapi.org/v2"
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}"
 
 # --- User-Selectable Options ---
 COUNTRIES = {

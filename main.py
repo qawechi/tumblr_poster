@@ -21,7 +21,7 @@ from config import (
     TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN,
     TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME, FETCH_COOLDOWN_HOURS,
     EMAIL_NOTIFICATIONS_ENABLED, SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL,
-    QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE # Import new paths
+    QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE
 )
 
 # Constants
@@ -51,21 +51,70 @@ def save_news_queue(articles):
         json.dump(articles, f, ensure_ascii=False, indent=4)
     logging.info(f"💾 Queue saved. {len(articles)} articles remaining.")
 
-# ... (All other helper functions like cooldowns, email, etc., go here) ...
+# --- Timestamp & Cooldown Functions ---
+def load_timestamps():
+    if not os.path.exists(TIMESTAMP_FILE): return {}
+    try:
+        with open(TIMESTAMP_FILE, 'r') as f: return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError): return {}
+
+def save_timestamps(timestamps):
+    with open(TIMESTAMP_FILE, 'w') as f: json.dump(timestamps, f, indent=4)
+
+def is_on_cooldown(category_code, timestamps):
+    last_fetch_str = timestamps.get(category_code)
+    if not last_fetch_str: return False
+    last_fetch_time = datetime.fromisoformat(last_fetch_str)
+    if datetime.now() < last_fetch_time + timedelta(hours=FETCH_COOLDOWN_HOURS):
+        logging.info(f"Category '{category_code}' is on cooldown. Skipping fetch.")
+        return True
+    return False
+
+# --- Other Helper Functions ---
 def send_failure_email(article_title):
-    if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]): return
-    message = f"Subject: Tumblr Bot Alert: Post Dropped\n\nScript stopped because a post was dropped.\nFailed Article: {article_title}\nWait 24-48 hours before restarting."
+    if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]):
+        return
+    subject = "Tumblr Bot Alert: Post Dropped"
+    body = f"The script has been automatically stopped because Tumblr dropped a post.\n\nFailed Article Title: {article_title}\n\nIt is recommended to wait 24-48 hours before running the script again."
+    message = f"Subject: {subject}\n\n{body}"
     try:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, message.encode("utf-8"))
-            logging.info("✅ Email alert sent.")
+            logging.info("✅ Email alert sent successfully.")
     except Exception as e:
-        logging.error(f"Failed to send email alert: {e}")
+        logging.error(f"Failed to send email alert. Error: {e}")
+
+def is_image_url_valid(url):
+    if not url or not url.startswith(('http://', 'https://')): return False
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        return response.status_code == 200
+    except requests.exceptions.RequestException: return False
+
+def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False):
+    print(prompt_message)
+    indexed_options = list(options.keys())
+    offset = 2 if allow_all else 1
+    if allow_all: print("  1) All Categories [Default]")
+    for i, key in enumerate(indexed_options):
+        number = i + offset
+        label = options[key]['name'] if isinstance(options[key], dict) else options[key]
+        default_text = " [Default]" if key == default_key and not allow_all else ""
+        print(f"  {number}) {label}{default_text}")
+    while True:
+        try:
+            choice = input("> ")
+            if choice == "" and (default_key is not None or allow_all): return 'all' if allow_all else default_key
+            choice_val = int(choice)
+            if allow_all and choice_val == 1: return 'all'
+            choice_index = choice_val - offset
+            if 0 <= choice_index < len(indexed_options): return indexed_options[choice_index]
+            else: print("❌ Invalid number. Please try again.")
+        except ValueError: print("❌ Invalid input. Please enter a number.")
 
 def fetch_and_filter_news(country, category_code, category_config, url_history):
-    # ... (function body is mostly the same, just uses url_history) ...
     logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
     params = {'apiKey': NEWS_API_KEY, 'pageSize': 100, **category_config['params']}
     if category_config['endpoint'] == 'top-headlines': params['country'] = country
@@ -85,7 +134,7 @@ def fetch_and_filter_news(country, category_code, category_config, url_history):
         article_url = article.get('url')
         if not article_url or article_url in url_history: continue
         image_url = article.get('urlToImage', '')
-        if image_url and not requests.head(image_url, timeout=5).ok: continue
+        if image_url and not is_image_url_valid(image_url): continue
         new_articles.append({
             "url": article_url, "title": article.get('title', 'No Title'), 
             "summary": article.get('description') or article.get('content', ''),
@@ -98,7 +147,6 @@ def fetch_and_filter_news(country, category_code, category_config, url_history):
     return new_articles, new_urls
 
 def translate_articles_gemini(articles_to_translate):
-    # ... (This function is unchanged) ...
     if not articles_to_translate:
         logging.info("ℹ️ No articles to translate.")
         return
@@ -120,9 +168,7 @@ def translate_articles_gemini(articles_to_translate):
     except Exception as e:
         logging.error(f"Gemini translation failed: {e}")
 
-
 def post_to_tumblr(client, article):
-    # ... (This function is unchanged but for the slower delay) ...
     logging.info(f"▶️ Posting '{article.get('title_ku', 'No Title')[:30]}...'")
     tags = [article['category_ku'], article['source']]
     try:
@@ -149,7 +195,6 @@ def post_to_tumblr(client, article):
         logging.error(f"An exception occurred during posting: {e}")
         return False
 
-
 def main():
     # --- Setup Logging ---
     logger = logging.getLogger()
@@ -162,7 +207,6 @@ def main():
 
     # --- Initial User Choices ---
     selected_country = prompt_for_choice("Please choose a country:", COUNTRIES, 'us')
-    # ... (rest of main function is refactored for new logic)
     selected_category_key = prompt_for_choice("\nProcess all categories or a single one?", CATEGORIES, allow_all=True)
     
     try:
