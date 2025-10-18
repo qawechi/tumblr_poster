@@ -6,7 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import time
 import logging
-import coloredlogs # NEW: Import for colorful logs
+import coloredlogs
 
 # Import settings from the config file
 from config import (
@@ -39,9 +39,9 @@ def is_image_url_valid(url):
 
 def prompt_for_choice(prompt_message, options, default_key=None):
     """Prompts the user to select an option from a list."""
-    print(prompt_message) # This remains a print because it's direct user interaction
+    print(prompt_message)
     indexed_options = list(options.keys())
-    
+
     for i, key in enumerate(indexed_options):
         number = i + 1
         label = options[key]['name'] if isinstance(options[key], dict) else options[key]
@@ -53,7 +53,7 @@ def prompt_for_choice(prompt_message, options, default_key=None):
             choice = input("> ")
             if choice == "" and default_key is not None:
                 return default_key
-            
+
             choice_index = int(choice) - 1
             if 0 <= choice_index < len(indexed_options):
                 return indexed_options[choice_index]
@@ -82,20 +82,20 @@ def save_all_news(file_path, all_articles):
 def fetch_and_filter_news(country, category_code, category_config, existing_articles):
     """Fetches news, validates images, and filters out duplicates."""
     logging.info(f"▶️ Step 1: Fetching latest news for '{category_config['name']}'...")
-    
+
     params = {
         'apiKey': NEWS_API_KEY,
         'pageSize': 100,
     }
-    
+
     params.update(category_config['params'])
-    
+
     endpoint = category_config['endpoint']
     if endpoint == 'top-headlines':
         params['country'] = country
-        
+
     full_api_url = f"{NEWS_API_BASE_URL}/{endpoint}"
-    
+
     try:
         response = requests.get(full_api_url, params=params)
         response.raise_for_status()
@@ -110,9 +110,9 @@ def fetch_and_filter_news(country, category_code, category_config, existing_arti
 
     existing_urls = {article['url'] for article in existing_articles}
     new_articles = []
-    
+
     kurdish_category = KURDISH_CATEGORY_MAP.get(category_code, "گشتی")
-    
+
     articles_from_api = data.get('articles', [])
     logging.info(f"Found {len(articles_from_api)} raw articles from API. Filtering now...")
 
@@ -120,7 +120,7 @@ def fetch_and_filter_news(country, category_code, category_config, existing_arti
         # Basic filter for duplicates and missing URLs
         if not article.get('url') or article['url'] in existing_urls:
             continue
-            
+
         # --- Image Validation Step ---
         image_url = article.get('urlToImage', '')
         if image_url and not is_image_url_valid(image_url):
@@ -151,7 +151,7 @@ def fetch_and_filter_news(country, category_code, category_config, existing_arti
             "category_ku": kurdish_category,
             "status": "fetched"
         })
-    
+
     logging.info(f"✅ Fetch complete. Found {len(new_articles)} new, valid articles.")
     return new_articles
 
@@ -174,44 +174,52 @@ def translate_articles_gemini(articles_to_translate):
         json_text = response_data['candidates'][0]['content']['parts'][0]['text']
         cleaned_json = json_text.strip().lstrip("```json").rstrip("```").strip()
         translated_data = json.loads(cleaned_json)
-        
+
         for item in translated_data:
             article_index = item['id']
             articles_to_translate[article_index]['title_ku'] = item['title']
             articles_to_translate[article_index]['summary_ku'] = item['summary']
             articles_to_translate[article_index]['status'] = 'translated'
-            
+
         logging.info(f"✅ Translation complete. {len(translated_data)} articles updated to 'translated' status.")
     except (requests.exceptions.RequestException, KeyError, IndexError, json.JSONDecodeError) as e:
         logging.error(f"Gemini translation failed: {e}")
 
 def post_to_tumblr(client, article):
-    """Posts a single article to Tumblr."""
+    """Posts a single article to Tumblr using the correct post type."""
     logging.info(f"▶️ Step 4: Attempting to post '{article['title_ku'][:30]}...' to Tumblr...")
     tags = [article['category_ku'], article['source']]
     post_id = None
 
-    # --- Define the "Read More" link that only shows on the post's own page ---
-    # We use double curly braces {{...}} so Python's f-string ignores them
-    # and passes the single braces {...} to the Tumblr API.
-    read_more_link_html = f'{{block:PermalinkPage}}<p style="text-align: left; margin-top: 15px;"><a href="{article["url"]}" target="_blank">درێژەی بابەت</a></p>{{/block:PermalinkPage}}'
-
     try:
+        # --- IF THERE IS AN IMAGE: Create a Photo Post ---
+        # The image itself will link to the original article URL.
         if article.get('urlToImage'):
-            # Append the read more link to the caption
             caption_html = (
                 f'<h5 class="card-title lh-base">{article["title_ku"]}</h5>'
                 f'<p class="card-text text-muted">{article["summary_ku"]}</p>'
-                f'{read_more_link_html}'
             )
-            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=caption_html, link=article['url'], format="html")
+            response = client.create_photo(
+                TUMBLR_BLOG_NAME,
+                state="published",
+                tags=tags,
+                source=article['urlToImage'],
+                caption=caption_html,
+                link=article['url'],  # Makes the photo clickable
+                format="html"
+            )
+        # --- IF THERE IS NO IMAGE: Create a Link Post ---
+        # The post title becomes the link, and the summary is the description.
         else:
-            # Append the read more link to the body
-            body_html = (
-                f'<p class="card-text text-muted">{article["summary_ku"]}</p>'
-                f'{read_more_link_html}'
+            response = client.create_link(
+                TUMBLR_BLOG_NAME,
+                state="published",
+                title=article['title_ku'],
+                url=article['url'],  # The main URL for the link post
+                description=f'<p class="card-text text-muted">{article["summary_ku"]}</p>',
+                tags=tags,
+                format="html"
             )
-            response = client.create_text(TUMBLR_BLOG_NAME, state="published", tags=tags, title=article['title_ku'], body=body_html, format="html")
 
         if 'id' in response:
             post_id = response['id']
@@ -236,7 +244,7 @@ def post_to_tumblr(client, article):
 
 # --- MAIN EXECUTION FLOW ---
 if __name__ == "__main__":
-    # --- NEW: Setup colorful logging ---
+    # --- Setup colorful logging ---
     # Get the root logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -250,7 +258,6 @@ if __name__ == "__main__":
     logger.addHandler(file_handler)
 
     # Use coloredlogs to create a colorful handler for the console
-    # The level and logger parameters ensure it attaches to our existing setup
     coloredlogs.install(level='INFO', logger=logger)
 
     logging.info("--- Script starting ---")
@@ -271,12 +278,12 @@ if __name__ == "__main__":
         logging.info(f"\n--- Processing Category: {category_name} ({category_code}) ---")
 
         all_articles = load_existing_news(OUTPUT_FILE)
-        
+
         newly_fetched = fetch_and_filter_news(selected_country, category_code, category_config, all_articles)
         if newly_fetched:
             all_articles.extend(newly_fetched)
             save_all_news(OUTPUT_FILE, all_articles)
-        
+
         articles_to_translate = [a for a in all_articles if a.get('category') == category_code and a.get('status') == 'fetched']
         if articles_to_translate:
             translate_articles_gemini(articles_to_translate)
@@ -285,7 +292,7 @@ if __name__ == "__main__":
             logging.info("ℹ️ No new articles to translate for this category.")
 
         articles_to_post = [a for a in all_articles if a.get('category') == category_code and a.get('status') == 'translated']
-        
+
         if articles_to_post:
             logging.info(f"▶️ Step 3: Sorting {len(articles_to_post)} translated articles by newest first...")
             articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=True)
@@ -295,7 +302,7 @@ if __name__ == "__main__":
                 if success:
                     article['status'] = 'posted'
                     save_all_news(OUTPUT_FILE, all_articles)
-                
+
                 logging.info("  - Pausing for 15 seconds before next post...")
                 time.sleep(15)
         else:
