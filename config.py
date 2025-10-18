@@ -46,7 +46,7 @@ CATEGORIES = {
     'kurdistan': {
         'name': 'Kurdistan',
         'endpoint': 'everything', # Uses the /everything endpoint
-        'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds'}
+        'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description'}
     },
     'general': {
         'name': 'General',
