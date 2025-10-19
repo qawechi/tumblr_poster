@@ -26,7 +26,7 @@ echo "        - All required packages are installed/verified."
 # =================================================================
 # Section 2 & 3: Run the Python setup script
 # =================================================================
-python setup.py
+python3 setup.py
 
 # =================================================================
 # Section 4: Run the main application
