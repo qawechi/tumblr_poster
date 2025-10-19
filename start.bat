@@ -3,12 +3,17 @@
 TITLE "News Bot Setup & Runner"
 
 :: =================================================================
+:: CRITICAL FIX: Set event loop policy for stable asyncio on Windows (Python 3.8+)
+:: This resolves the "no current event loop" error.
+SET ASYNCIO_EVENT_LOOP_POLICY=asyncio.WindowsSelectorEventLoopPolicy
+
+:: =================================================================
 :: Section 1: Install Dependencies
 :: =================================================================
 ECHO.
 ECHO [1/4] Checking and installing Python packages...
 pip install -r requirements.txt --quiet
-ECHO      - All required packages are installed/verified.
+ECHO      - All required packages are installed/verified.
 
 :: =================================================================
 :: Section 2 & 3: Run the Python setup script

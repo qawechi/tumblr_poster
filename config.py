@@ -26,6 +26,10 @@ TUMBLR_OAUTH_TOKEN = os.getenv("TUMBLR_OAUTH_TOKEN")
 TUMBLR_OAUTH_SECRET = os.getenv("TUMBLR_OAUTH_SECRET")
 TUMBLR_BLOG_NAME = os.getenv("TUMBLR_BLOG_NAME")
 
+# --- NEW: Telegram Keys ---
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
 # --- Script Settings ---
 TIMEZONE = 'Asia/Baghdad'
 FETCH_COOLDOWN_HOURS = 2

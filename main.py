@@ -13,6 +13,13 @@ import os
 import sys
 import smtplib
 import ssl
+import telegram
+from telegram import InputMediaPhoto
+from telegram.error import TelegramError
+import asyncio 
+
+# NOTE: For the 'no current event loop' error, you MUST set the environment variable
+# ASYNCIO_EVENT_LOOP_POLICY=asyncio.WindowsSelectorEventLoopPolicy in your start.bat file.
 
 # Import settings from the config file
 from config import (
@@ -22,14 +29,15 @@ from config import (
     TUMBLR_OAUTH_SECRET, TUMBLR_BLOG_NAME, FETCH_COOLDOWN_HOURS,
     EMAIL_NOTIFICATIONS_ENABLED, SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL,
     QUEUE_FILE, URL_HISTORY_FILE, TIMESTAMP_FILE, LOG_FILE,
-    CONTACT_EMAIL, BLOG_URL
+    CONTACT_EMAIL, BLOG_URL,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 
 )
 
 # Constants
 STATUS_FETCHED = 'fetched'
 STATUS_TRANSLATED = 'translated'
 
-# --- URL History & Queue Functions ---
+# --- URL History & Queue Functions (UNCHANGED) ---
 def load_url_history():
     if not os.path.exists(URL_HISTORY_FILE): return set()
     try:
@@ -52,7 +60,7 @@ def save_news_queue(articles):
         json.dump(articles, f, ensure_ascii=False, indent=4)
     logging.info(f"💾 Queue saved. {len(articles)} articles remaining.")
 
-# --- Timestamp & Cooldown Functions ---
+# --- Timestamp & Cooldown Functions (UNCHANGED) ---
 def load_timestamps():
     if not os.path.exists(TIMESTAMP_FILE): return {}
     try:
@@ -71,7 +79,7 @@ def is_on_cooldown(category_code, timestamps):
         return True
     return False
 
-# --- Other Helper Functions ---
+# --- Other Helper Functions (UNCHANGED) ---
 def send_failure_email(article_title):
     if not EMAIL_NOTIFICATIONS_ENABLED or not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]): return
     message = f"Subject: Tumblr Bot Alert: Post Dropped\n\nScript stopped because a post was dropped.\nFailed Article: {article_title}\nWait 24-48 hours before restarting."
@@ -95,12 +103,12 @@ def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False
     print(prompt_message)
     indexed_options = list(options.keys())
     offset = 2 if allow_all else 1
-    if allow_all: print("  1) All Categories [Default]")
+    if allow_all: print("  1) All Categories [Default]")
     for i, key in enumerate(indexed_options):
         number = i + offset
         label = options[key]['name'] if isinstance(options[key], dict) else options[key]
         default_text = " [Default]" if key == default_key and not allow_all else ""
-        print(f"  {number}) {label}{default_text}")
+        print(f"  {number}) {label}{default_text}")
     while True:
         try:
             choice = input("> ")
@@ -171,8 +179,64 @@ def translate_articles_gemini(articles_to_translate):
         logging.error(f"Gemini translation failed: {e}. Will retry on the next cycle.")
         # We don't return here, allowing the script to continue with other tasks
 
+# ASYNCHRONOUS HELPER FUNCTION for Telegram API calls
+async def async_post_to_telegram(telegram_bot, article): 
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.warning("⚠️ Telegram credentials missing. Skipping post.")
+        return False
+        
+    logging.info(f"▶️ Posting to Telegram: '{article.get('title_ku', 'No Title')[:30]}...'")
+
+    # Tags are NOT included in the post_text, as requested.
+    
+    post_text = (
+        f"<b>{article['title_ku']}</b>\n\n"
+        f"{article['summary_ku']}\n\n"
+        f'<a href="{article["url"]}">سەرچاوە: {article["source"]}</a>'
+    )
+
+    try:
+        image_url = article.get('urlToImage')
+        
+        if image_url and is_image_url_valid(image_url):
+            await telegram_bot.send_photo( 
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=image_url,
+                caption=post_text,
+                parse_mode='HTML'
+            )
+        else:
+            await telegram_bot.send_message( 
+                chat_id=TELEGRAM_CHAT_ID,
+                text=post_text,
+                parse_mode='HTML',
+                disable_web_page_preview=False
+            )
+        
+        logging.info("  - ✅ Telegram post sent successfully.")
+        return True
+
+    except TelegramError as e:
+        logging.error(f"❌ Telegram posting failed (Error: {e}).")
+        return False
+    except Exception as e:
+        logging.error(f"❌ An unexpected error occurred during Telegram posting: {e}")
+        return False
+
+# SYNCHRONOUS WRAPPER FUNCTION for main() to call
+def post_to_telegram(telegram_bot, article):
+    """Synchronous wrapper to call the async Telegram poster."""
+    try:
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(async_post_to_telegram(telegram_bot, article))
+    except Exception as e:
+        logging.error(f"❌ Synchronous Telegram wrapper failed: {e}")
+        return False
+
+
 def post_to_tumblr(client, article):
     logging.info(f"▶️ Posting '{article.get('title_ku', 'No Title')[:30]}...'")
+    # Tags ARE included in the Tumblr post
     tags = [article['category_ku'], article['source']]
     try:
         if article.get('urlToImage'):
@@ -182,21 +246,26 @@ def post_to_tumblr(client, article):
         
         post_id = response.get('id')
         if not post_id:
-            logging.critical("CRITICAL: Post dropped by spam filter. Shutting down.")
+            logging.critical("CRITICAL: Post dropped by spam filter.")
             send_failure_email(article.get('title_ku', 'N/A'))
-            sys.exit(1)
+            return False 
         
         time.sleep(3)
         if client.posts(TUMBLR_BLOG_NAME, id=post_id).get('posts'):
-            logging.info(f"  - ✅ Verified Post ID: {post_id}")
+            logging.info(f"  - ✅ Verified Post ID: {post_id}")
             return True
         else:
-            logging.warning(f"  - VERIFICATION FAILED. Shutting down.")
+            logging.warning(f"  - VERIFICATION FAILED. Allowing script to continue.")
             send_failure_email(article.get('title_ku', 'N/A'))
-            sys.exit(1)
+            return False
+            
     except Exception as e:
-        logging.error(f"An exception occurred during posting: {e}")
+        logging.error(f"An exception occurred during posting to Tumblr: {e}")
         return False
+
+# ASYNC CHECKER for initialization
+async def async_check_telegram(telegram_bot):
+    await telegram_bot.get_me()
 
 def main():
     logger = logging.getLogger()
@@ -211,10 +280,27 @@ def main():
     selected_category_key = prompt_for_choice("\nProcess all categories or a single one?", CATEGORIES, allow_all=True)
     
     try:
+        # 1. Tumblr Client Initialization
         tumblr_client = pytumblr.TumblrRestClient(TUMBLR_CONSUMER_KEY, TUMBLR_CONSUMER_SECRET, TUMBLR_OAUTH_TOKEN, TUMBLR_OAUTH_SECRET)
         tumblr_client.info()
+        logging.info("✅ Tumblr client initialized.")
+
+        # 2. Telegram Bot Initialization (ROBUST ASYNC LOOP HANDLING)
+        telegram_bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+        
+        # Check if a loop exists, and create a new one if necessary
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        # Check token validity using run_until_complete on the guaranteed loop
+        loop.run_until_complete(async_check_telegram(telegram_bot))
+        logging.info("✅ Telegram bot initialized.")
+        
     except Exception as e:
-        logging.error(f"Tumblr authentication failed: {e}. Exiting.")
+        logging.error(f"API authentication failed (Tumblr or Telegram): {e}. Exiting. Error: {e}")
         return
 
     news_queue = load_news_queue()
@@ -247,13 +333,27 @@ def main():
         articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=True)
         logging.info(f"\n--- Found {len(articles_to_post)} translated articles to post ---")
         for article in articles_to_post:
-            if post_to_tumblr(tumblr_client, article):
+            
+            tumblr_posted = post_to_tumblr(tumblr_client, article)
+            telegram_posted = post_to_telegram(telegram_bot, article)
+
+            # Add a small pause after Telegram call to clear the connection pool (Fixes Pool Timeout)
+            if telegram_posted:
+                time.sleep(2)
+                
+            # Clean up logic: Remove article if it was successfully posted to ANY platform
+            if tumblr_posted or telegram_posted:
                 news_queue = [item for item in news_queue if item['url'] != article['url']]
                 save_news_queue(news_queue)
-            
-            pause = random.uniform(180, 300)
-            logging.info(f"  - Pausing for {pause:.1f} seconds...")
-            time.sleep(pause)
+                
+                # Only pause the large random interval if at least one post was successful
+                pause = random.uniform(180, 300)
+                logging.info(f"  - Pausing for {pause:.1f} seconds...")
+                time.sleep(pause)
+            else:
+                 # If both fail, log it and keep the article in the queue for the next cycle
+                logging.warning(f"Both Tumblr and Telegram posts failed for article: {article['title_ku']}. Keeping in queue.")
+
 
     logging.info("\n✅ Cycle complete. Script finished.")
 
