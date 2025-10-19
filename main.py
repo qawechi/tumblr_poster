@@ -338,9 +338,9 @@ def post_to_tumblr(client, article):
 
     try:
         if article.get('urlToImage'):
-            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=f"<h5>{article['title_ku']}</h5><p>{article['summary_ku']}</p>", link=article['url'], format="html")
+            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=f"<h5 class='card-title lh-base pt-1'>{article['title_ku']}</h5><p>{article['summary_ku']}</p>", link=article['url'], format="html")
         else:
-            response = client.create_link(TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], url=article['url'], description=f"<p>{article['summary_ku']}</p>", tags=tags, format="html")
+            response = client.create_link(TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], url=article['url'], description=f"<p class='card-text text-muted 1h-base'>{article['summary_ku']}</p>", tags=tags, format="html")
         
         post_id = response.get('id')
         if not post_id:

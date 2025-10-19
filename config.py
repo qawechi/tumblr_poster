@@ -68,20 +68,20 @@ COUNTRIES = {
 
 # --- Category Definitions ---
 CATEGORIES = {
-    'kurdistan': {'name': 'Kurdistan', 'endpoint': 'everything', 'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description'}},
-    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general'}},
-    'business': {'name': 'Business', 'endpoint': 'top-headlines', 'params': {'category': 'business'}},
-    'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment'}},
-    'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health'}},
-    'science': {'name': 'Science', 'endpoint': 'top-headlines', 'params': {'category': 'science'}},
-    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR UEFA OR fifa', 'searchIn': 'title,description'}},
-    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology'}}
+    'kurdistan': {'name': 'Kurdistan', 'endpoint': 'everything', 'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description', 'pageSize': 5}},
+    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general', 'pageSize': 5}},
+    'business': {'name': 'Business', 'endpoint': 'top-headlines', 'params': {'category': 'business', 'pageSize': 5}},
+    'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment', 'pageSize': 5}},
+    'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health', 'pageSize': 5}},
+    'science': {'name': 'Science', 'endpoint': 'top-headlines', 'params': {'category': 'science', 'pageSize': 5}},
+    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR UEFA OR fifa', 'searchIn': 'title,description', 'pageSize': 5}},
+    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology', 'pageSize': 5}}
 }
 
 # --- Translation Mapping ---
 KURDISH_CATEGORY_MAP = {
     'kurdistan': 'کورد', 'business': 'ئابووری', 'entertainment': 'هەمەڕەنگ',
-    'general': 'gشتی', 'health': 'تەندرووستی', 'science': 'زانست',
+    'general': 'گشتی', 'health': 'تەندرووستی', 'science': 'زانست',
     'sports': 'وەرزش', 'technology': 'تەکنەلۆژیا'
 }
 
