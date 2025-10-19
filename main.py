@@ -27,7 +27,7 @@ from config import (
     DATABASE_FILE, LOG_FILE, CONTACT_EMAIL, BLOG_URL,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TRANSLATION_CHUNK_SIZE,
     GEMINI_TAG_COUNT, POST_TO_TUMBLR, POST_TO_TELEGRAM,
-    CYCLE_COOLDOWN_MINUTES, PROMPT_TIMEOUT_SECONDS # NEW: Import timeout setting
+    CYCLE_COOLDOWN_MINUTES, PROMPT_TIMEOUT_SECONDS
 )
 
 # Constants
@@ -151,7 +151,6 @@ def is_image_url_valid(url):
         return response.status_code == 200
     except requests.exceptions.RequestException: return False
 
-# --- MODIFIED: New prompt_for_choice function with timeout ---
 def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False):
     """Prompts the user to select an option from a list with a timeout on Windows."""
     print(prompt_message)
@@ -175,13 +174,11 @@ def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False
     user_input = ""
 
     while True:
-        # 1. Check for timeout
         elapsed_time = time.time() - start_time
         if elapsed_time >= PROMPT_TIMEOUT_SECONDS:
             print("\nTimeout reached. Selecting default.")
             return default_value
 
-        # 2. Check for keyboard input
         if msvcrt.kbhit():
             char = msvcrt.getwch()
 
@@ -219,10 +216,9 @@ def prompt_for_choice(prompt_message, options, default_key=None, allow_all=False
         print("❌ Invalid input. Selecting default.")
         return default_value
 
-
 def fetch_and_filter_news(conn, country, category_code, category_config):
     logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
-    headers = {'User-Agent': f'KurdishNewsBot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'}
+    headers = {'User-Agent': f'DANA News Bot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'}
     params = {'apiKey': NEWS_API_KEY, 'pageSize': 100, **category_config['params']}
     if category_config['endpoint'] == 'top-headlines': params['country'] = country
     full_api_url = f"{NEWS_API_BASE_URL}/{category_config['endpoint']}"
@@ -247,6 +243,7 @@ def fetch_and_filter_news(conn, country, category_code, category_config):
         
         image_url = article.get('urlToImage', '')
         if image_url and not is_image_url_valid(image_url):
+            logging.warning(f"Skipping article with invalid image URL: {image_url}")
             continue
         
         new_articles.append({
@@ -298,8 +295,15 @@ def translate_articles_gemini(articles_to_translate):
 async def async_post_to_telegram(telegram_bot, article):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return False
     logging.info(f"▶️ Posting to Telegram: '{article.get('title_ku', 'No Title')[:30]}...'")
-    post_text = (f"<b>{article['title_ku']}</b>\n\n{article['summary_ku']}\n\n"
-                 f'<a href="{article["url"]}">سەرچاوە: {article["source"]}</a>')
+
+    # --- UPDATED: No more spoilers or "See More" logic ---
+    title_ku = article['title_ku']
+    summary_ku = article['summary_ku']
+    
+    # --- UPDATED: Source link is now just the source name ---
+    post_text = (f"<b>{title_ku}</b>\n\n{summary_ku}\n\n"
+                 f'<a href="{article["url"]}">{article["source"]}</a>')
+    
     try:
         image_url = article.get('urlToImage')
         if image_url and is_image_url_valid(image_url):
@@ -324,7 +328,7 @@ def post_to_telegram(telegram_bot, article):
         return False
 
 def post_to_tumblr(client, article):
-    """Posts to Tumblr, now including dynamically generated tags."""
+    """Posts the full summary to Tumblr with a source link at the bottom."""
     logging.info(f"▶️ Posting to Tumblr '{article.get('title_ku', 'No Title')[:30]}...'")
     
     tags = [article['category_ku'], article['source']]
@@ -335,12 +339,33 @@ def post_to_tumblr(client, article):
             tags.extend(generated_tags)
     except json.JSONDecodeError:
         logging.warning("Could not parse generated_tags from database.")
+        
+    # --- UPDATED: No more splitting or "" logic ---
+    # We will now use the full summary directly.
+    full_summary = article['summary_ku']
+    
+    # --- The source link is formatted to be appended at the end ---
+    source_html = f"<p class='text-center'><a class='link-secondary link-offset-3' href='{article['url']}' target='_blank'>{article['source']}</a></p>"
 
     try:
         if article.get('urlToImage'):
-            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=f"<h5 class='card-title lh-base pt-1'>{article['title_ku']}</h5><p>{article['summary_ku']}</p>", link=article['url'], format="html")
+            # The caption now includes the full summary followed by the source
+            caption_html = f"<h5 class='card-title lh-base pt-1'>{article['title_ku']}</h5><p>{full_summary}[[MORE]]</p>{source_html}"
+            response = client.create_photo(
+                TUMBLR_BLOG_NAME, state="published", tags=tags, 
+                source=article['urlToImage'], 
+                caption=caption_html, 
+                link=article['url'], format="html"
+            )
         else:
-            response = client.create_link(TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], url=article['url'], description=f"<p class='card-text text-muted 1h-base'>{article['summary_ku']}</p>", tags=tags, format="html")
+            # The description also includes the full summary followed by the source
+            description_html = f"<p class='card-text text-muted 1h-base'>{full_summary}</p>{source_html}"
+            response = client.create_link(
+                TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], 
+                url=article['url'], 
+                description=description_html, 
+                tags=tags, format="html"
+            )
         
         post_id = response.get('id')
         if not post_id:
@@ -363,7 +388,6 @@ def post_to_tumblr(client, article):
 
 async def async_check_telegram(telegram_bot):
     await telegram_bot.get_me()
-
 
 def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_key):
     """
@@ -430,9 +454,8 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
                     else:
                         logging.warning(f"Both active posts failed for article. It will be retried next cycle.")
             else:
-                logging.info("\nℹ️ Posting to Tumblr and Telegram is disabled in the .env file. Skipping posting stage.")
+                logging.info("\nℹ️ Posting to Tumblr and Telegram is disabled in config. Skipping posting stage.")
     logging.info("--- Cycle complete ---")
-
 
 def main():
     """
@@ -440,7 +463,7 @@ def main():
     """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    handler = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=5)
+    handler = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
     coloredlogs.install(level='INFO', logger=logger)
@@ -477,10 +500,9 @@ def main():
             logging.info("Bot stopped manually by user.")
             break
         except Exception as e:
-            logging.critical(f"An unexpected error occurred in the main loop: {e}")
+            logging.critical(f"An unexpected error occurred in the main loop: {e}", exc_info=True)
             logging.critical("Restarting cycle after a 10-minute safety pause...")
             time.sleep(10 * 60)
-
 
 if __name__ == "__main__":
     main()
