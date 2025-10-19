@@ -12,9 +12,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 # Main data files
-QUEUE_FILE = os.path.join(DATA_DIR, 'news_queue.json')
-URL_HISTORY_FILE = os.path.join(DATA_DIR, 'url_history.json')
-TIMESTAMP_FILE = os.path.join(DATA_DIR, 'cache_timestamps.json')
+DATABASE_FILE = os.path.join(DATA_DIR, 'news_bot.db')
 LOG_FILE = os.path.join(LOGS_DIR, 'script.log')
 
 # --- API Keys ---
@@ -26,15 +24,23 @@ TUMBLR_OAUTH_TOKEN = os.getenv("TUMBLR_OAUTH_TOKEN")
 TUMBLR_OAUTH_SECRET = os.getenv("TUMBLR_OAUTH_SECRET")
 TUMBLR_BLOG_NAME = os.getenv("TUMBLR_BLOG_NAME")
 
-# --- NEW: Telegram Keys ---
+# --- Telegram Keys ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # --- Script Settings ---
 TIMEZONE = 'Asia/Baghdad'
 FETCH_COOLDOWN_HOURS = 2
+TRANSLATION_CHUNK_SIZE = 50
+GEMINI_TAG_COUNT = 4
+CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "60"))
+PROMPT_TIMEOUT_SECONDS = 5 # NEW: Timeout for user input prompts
 
-# --- NEW: User-Agent Information ---
+# --- Posting Platform Toggles ---
+POST_TO_TUMBLR = os.getenv("POST_TO_TUMBLR", "true").lower() == "true"
+POST_TO_TELEGRAM = os.getenv("POST_TO_TELEGRAM", "true").lower() == "true"
+
+# --- User-Agent Information ---
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL")
 BLOG_URL = os.getenv("BLOG_URL")
 
@@ -68,16 +74,15 @@ CATEGORIES = {
     'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment'}},
     'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health'}},
     'science': {'name': 'Science', 'endpoint': 'top-headlines', 'params': {'category': 'science'}},
-    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR la liga OR El Clásico OR UEFA OR fifa', 'searchIn': 'title,description'}},
-    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology'}},
-    'politics': {'name': 'Politics', 'endpoint': 'top-headlines', 'params': {'category': 'politics'}}
+    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR UEFA OR fifa', 'searchIn': 'title,description'}},
+    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology'}}
 }
 
 # --- Translation Mapping ---
 KURDISH_CATEGORY_MAP = {
     'kurdistan': 'کورد', 'business': 'ئابووری', 'entertainment': 'هەمەڕەنگ',
-    'general': 'گشتی', 'health': 'تەندرووستی', 'science': 'زانست',
-    'sports': 'وەرزش', 'technology': 'تەکنەلۆژیا', 'politics': 'سیاسەت'
+    'general': 'gشتی', 'health': 'تەندرووستی', 'science': 'زانست',
+    'sports': 'وەرزش', 'technology': 'تەکنەلۆژیا'
 }
 
 # --- Email Notification Settings ---
