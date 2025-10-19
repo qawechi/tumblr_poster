@@ -35,4 +35,4 @@ echo ""
 echo "[4/4] All setup is complete. Starting the main news bot..."
 echo "================================================================="
 echo ""
-python main.py
+python3 main.py
