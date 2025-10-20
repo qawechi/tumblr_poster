@@ -30,8 +30,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # --- Script Settings ---
 TIMEZONE = 'Asia/Baghdad'
-FETCH_COOLDOWN_HOURS = 0
-TRANSLATION_CHUNK_SIZE = 50
+FETCH_COOLDOWN_HOURS = 2
+TRANSLATION_CHUNK_SIZE = 80
 GEMINI_TAG_COUNT = 4
 CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "60"))
 PROMPT_TIMEOUT_SECONDS = 5 # NEW: Timeout for user input prompts
@@ -68,14 +68,14 @@ COUNTRIES = {
 
 # --- Category Definitions ---
 CATEGORIES = {
-    'kurdistan': {'name': 'Kurdistan', 'endpoint': 'everything', 'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description', 'pageSize': 5}},
-    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general', 'pageSize': 20}},
-    'business': {'name': 'Business', 'endpoint': 'top-headlines', 'params': {'category': 'business', 'pageSize': 5}},
-    'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment', 'pageSize': 5}},
-    'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health', 'pageSize': 5}},
-    'science': {'name': 'Science', 'endpoint': 'top-headlines', 'params': {'category': 'science', 'pageSize': 5}},
-    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR UEFA OR fifa', 'searchIn': 'title,description', 'pageSize': 5}},
-    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology', 'pageSize': 5}}
+    'kurdistan': {'name': 'Kurdistan', 'endpoint': 'everything', 'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description', 'pageSize': 10}},
+    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general', 'pageSize': 10}},
+    'business': {'name': 'Business', 'endpoint': 'top-headlines', 'params': {'category': 'business', 'pageSize': 10}},
+    'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment', 'pageSize': 10}},
+    'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health', 'pageSize': 10}},
+    'science': {'name': 'Science', 'endpoint': 'top-headlines', 'params': {'category': 'science', 'pageSize': 10}},
+    'sports': {'name': 'Sports', 'endpoint': 'everything', 'params': {'q': 'laliga OR UEFA OR fifa OR "premier league" OR "el clasico"', 'searchIn': 'title,description', 'pageSize': 10}},
+    'technology': {'name': 'Technology', 'endpoint': 'top-headlines', 'params': {'category': 'technology', 'pageSize': 10}}
 }
 
 # --- Translation Mapping ---
