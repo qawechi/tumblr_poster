@@ -35,10 +35,10 @@ USE_SELENIUM_SCRAPING = os.getenv("USE_SELENIUM_SCRAPING", "false").lower() == "
 TARGET_COUNTRY = os.getenv("TARGET_COUNTRY", "us")
 TARGET_CATEGORY = os.getenv("TARGET_CATEGORY", "all")
 TIMEZONE = 'Asia/Baghdad'
-FETCH_COOLDOWN_HOURS = 2
+FETCH_COOLDOWN_HOURS = 1
 TRANSLATION_CHUNK_SIZE = 80
 GEMINI_TAG_COUNT = 4
-CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "60"))
+CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "25"))
 
 # --- Posting Platform Toggles ---
 POST_TO_TUMBLR = os.getenv("POST_TO_TUMBLR", "true").lower() == "true"

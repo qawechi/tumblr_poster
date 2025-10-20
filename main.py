@@ -1,4 +1,3 @@
-# main.py
 import json
 import requests
 import pytumblr
@@ -36,10 +35,14 @@ from config import (
 from newspaper import Article, Config
 import nltk
 
-# Selenium Imports
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+# Selenium Imports are only needed in scrape_full_article_text if USE_SELENIUM_SCRAPING is True.
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+except ImportError:
+    pass
+
 
 # One-time setup for newspaper3k's dependency
 try:
@@ -64,15 +67,15 @@ def init_db():
             with conn.cursor() as cursor:
                 # Note: TEXT is used for all string types. PostgreSQL is flexible.
                 cursor.execute('''CREATE TABLE IF NOT EXISTS articles (
-                                  url TEXT PRIMARY KEY, title TEXT, summary TEXT, category TEXT, 
-                                  source TEXT, urlToImage TEXT, publishedAt TEXT, 
-                                  status TEXT DEFAULT 'fetched', title_ku TEXT, summary_ku TEXT, 
-                                  category_ku TEXT, generated_tags TEXT
-                               )''')
+                                    url TEXT PRIMARY KEY, title TEXT, summary TEXT, category TEXT, 
+                                    source TEXT, urlToImage TEXT, publishedAt TEXT, 
+                                    status TEXT DEFAULT 'fetched', title_ku TEXT, summary_ku TEXT, 
+                                    category_ku TEXT, generated_tags TEXT
+                                    )''')
                 cursor.execute('''CREATE TABLE IF NOT EXISTS category_cooldowns (
-                                  category_code TEXT PRIMARY KEY, 
-                                  last_fetched TIMESTAMPTZ NOT NULL
-                               )''')
+                                    category_code TEXT PRIMARY KEY, 
+                                    last_fetched TIMESTAMPTZ NOT NULL
+                                    )''')
                 conn.commit()
         logging.info("🗃️ Database initialized successfully.")
     except Exception as e:
@@ -105,7 +108,7 @@ def get_articles_by_status(conn, status):
 def update_article_translation(conn, url, title_ku, summary_ku, tags_json):
     with conn.cursor() as cursor:
         cursor.execute('UPDATE articles SET title_ku = %s, summary_ku = %s, generated_tags = %s, status = %s WHERE url = %s', 
-                       (title_ku, summary_ku, tags_json, STATUS_TRANSLATED, url))
+                        (title_ku, summary_ku, tags_json, STATUS_TRANSLATED, url))
         conn.commit()
 
 def update_article_status(conn, url, status):
@@ -114,6 +117,10 @@ def update_article_status(conn, url, status):
         conn.commit()
 
 def is_on_cooldown(conn, category_code):
+    # 🎯 FIX: Bypass cooldown logic if FETCH_COOLDOWN_HOURS is 0
+    if FETCH_COOLDOWN_HOURS == 0:
+        return False
+        
     with conn.cursor() as cursor:
         cursor.execute("SELECT last_fetched FROM category_cooldowns WHERE category_code = %s", (category_code,))
         result = cursor.fetchone()
@@ -134,7 +141,7 @@ def update_cooldown_timestamp(conn, category_code):
     with conn.cursor() as cursor:
         # Use `NOW()` for a timezone-aware timestamp from the database itself
         cursor.execute('INSERT INTO category_cooldowns (category_code, last_fetched) VALUES (%s, NOW()) ON CONFLICT (category_code) DO UPDATE SET last_fetched = NOW()', 
-                       (category_code,))
+                        (category_code,))
         conn.commit()
 
 
@@ -150,12 +157,31 @@ def send_failure_email(article_title):
             logging.info("✅ Email alert sent successfully.")
     except Exception as e:
         logging.error(f"Failed to send email alert: {e}")
+
+# 🔥 FINAL FIX: Switched to GET request with stream=True to reliably bypass server blocks.
 def is_image_url_valid(url):
+    """Checks if a URL points to an accessible image by mimicking a browser GET request."""
     if not url or not url.startswith(('http://', 'https://')): return False
+    
+    # Use the custom User-Agent for validation requests
+    headers = {'User-Agent': f'DANA News Bot/1.0 (Contact: {CONTACT_EMAIL}; Blog: {BLOG_URL})'}
+    
     try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        return response.status_code == 200
-    except requests.exceptions.RequestException: return False
+        # Perform a GET request to bypass HEAD blocks, use stream=True to avoid downloading the whole file, and set a timeout.
+        response = requests.get(url, allow_redirects=True, timeout=10, headers=headers, stream=True)
+        response.raise_for_status() # Check for 4xx/5xx errors
+        
+        # IMMEDIATELY close the stream to prevent downloading the image content
+        response.close() 
+
+        content_type = response.headers.get('Content-Type', '').lower()
+        
+        # Check for image content types
+        return content_type.startswith('image/')
+    
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"Image validation failed (GET request error) for {url} (Error: {e})")
+        return False
 
 ## Core API & Scraping Functions
 def scrape_full_article_text(url):
@@ -176,9 +202,13 @@ def scrape_full_article_text(url):
             logging.error(f"Failed to scrape article at {url} with newspaper3k. Error: {e}")
             return None
     else:
-        logging.info(f"   -> Using Selenium to scrape: {url}")
+        logging.info(f"    -> Using Selenium to scrape: {url}")
         driver = None
         try:
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.chrome.options import Options
+            from selenium import webdriver
+
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--log-level=3")
@@ -206,6 +236,7 @@ def scrape_full_article_text(url):
             if driver:
                 driver.quit()
 
+# 🎯 CRITICAL FIX: If image is invalid or missing, the entire article is skipped.
 def fetch_and_filter_news(conn, country, category_code, category_config):
     """Fetches a list of articles, trying multiple API keys on failure."""
     logging.info(f"▶️ Fetching news for '{category_config['name']}'...")
@@ -228,38 +259,46 @@ def fetch_and_filter_news(conn, country, category_code, category_config):
             data = response.json()
 
             if data.get('status') == 'ok':
-                logging.info(f"   - Successfully fetched using API key ending in '...{api_key[-4:]}'")
+                logging.info(f"    - Successfully fetched using API key ending in '...{api_key[-4:]}'")
                 new_articles = []
                 for article in data.get('articles', []):
                     article_url = article.get('url')
                     if not article_url or is_url_in_db(conn, article_url):
                         continue
                     
-                    image_url = article.get('urlToImage', '')
-                    if image_url and not is_image_url_valid(image_url):
-                        logging.warning(f"Skipping article with invalid image URL: {image_url}")
-                        continue
+                    image_url = article.get('urlToImage', None)
 
-                    logging.info(f"  -> Scraping full text for: {article_url}")
+                    # 🎯 NEW LOGIC: Skip the entire article if image is missing
+                    if not image_url:
+                        logging.warning(f"    -> Skipping article: Missing 'urlToImage' for {article_url}")
+                        continue
+                        
+                    # 🎯 NEW LOGIC: Skip the entire article if image is invalid/inaccessible
+                    if not is_image_url_valid(image_url):
+                        logging.warning(f"    -> Skipping article: Image URL is invalid or inaccessible: {image_url}")
+                        continue
+                    
+                    logging.info(f"    -> Scraping full text for: {article_url}")
                     full_text = scrape_full_article_text(article_url)
                     if not full_text:
-                        logging.warning("  -> Skipping article due to scraping failure or short content.")
+                        logging.warning("    -> Skipping article due to scraping failure or short content.")
                         continue
                         
                     new_articles.append({
                         "url": article_url, "title": article.get('title', 'No Title'), "summary": full_text,
                         "category": category_code, "source": article.get('source', {}).get('name', 'N/A'),
-                        "urlToImage": image_url, "publishedAt": article['publishedAt'], "status": STATUS_FETCHED,
+                        "urlToImage": image_url, # Image is guaranteed to be valid/present here
+                        "publishedAt": article['publishedAt'], "status": STATUS_FETCHED,
                         "category_ku": KURDISH_CATEGORY_MAP.get(category_code, "گشتی")
                     })
-                logging.info(f"✅ Found and successfully scraped {len(new_articles)} new articles.")
+                logging.info(f"✅ Found and successfully scraped {len(new_articles)} new articles with valid images.")
                 return new_articles
             else:
-                logging.warning(f"   - API key ...{api_key[-4:]} failed with status: {data.get('message')}")
+                logging.warning(f"    - API key ...{api_key[-4:]} failed with status: {data.get('message')}")
                 continue
 
         except requests.exceptions.RequestException as e:
-            logging.warning(f"   - API key ...{api_key[-4:]} failed with network error: {e}")
+            logging.warning(f"    - API key ...{api_key[-4:]} failed with network error: {e}")
             continue
 
     logging.error("❌ All NewsAPI keys failed. Cannot fetch news for this category.")
@@ -271,9 +310,9 @@ def translate_articles_gemini(articles_to_translate):
     items_to_translate = [{"id": a["url"], "title": a["title"], "summary": a["summary"]} for a in articles_to_translate]
     prompt = f"""
     STRICT INSTRUCTION: For each news article, perform four tasks and return a single JSON array of objects.
-    1.  **Translate and Structure**: Translate the 'title' and 'summary' fields into professional Kurdish Sorani (ckb). The translated 'summary' MUST be formatted as a single string of valid HTML. Use `<p>` tags for each paragraph. Use `<h4>` for subheadings. Use `<strong>` to emphasize key phrases.
-    2.  **Clean and Format**: In the translated 'title', you MUST REMOVE any source names (e.g., 'Reuters:'). In BOTH the translated 'title' and the HTML 'summary', you MUST ENCLOSE all proper nouns in single parentheses. Example: '<strong>Joe Biden</strong>' becomes '<strong>(جۆ بایدن)</strong>'. Pay close attention to proper Kurdish punctuation, including commas (،), semicolons (؛), and periods (.).
-    3.  **Generate Tags**: Create a new field named 'tags'. It MUST be a JSON array of exactly {GEMINI_TAG_COUNT} relevant keywords in Kurdish. Do not use hashtags (#).
+    1.  **Translate and Structure**: Translate the 'title' and 'summary' fields into professional Kurdish Sorani (ckb). The translated 'summary' MUST be formatted as a single string of valid HTML. Use `<p>` tags for each paragraph. Use `<h4>` for subheadings. Use `<strong>` to emphasize key phrases.
+    2.  **Clean and Format**: In the translated 'title', you MUST REMOVE any source names (e.g., 'Reuters:'). In BOTH the translated 'title' and the HTML 'summary', you MUST ENCLOSE all proper nouns in single parentheses. Example: '<strong>Joe Biden</strong>' becomes '<strong>(جۆ بایدن)</strong>'. Pay close attention to proper Kurdish punctuation, including commas (،), semicolons (؛), and periods (.).
+    3.  **Generate Tags**: Create a new field named 'tags'. It MUST be a JSON array of exactly {GEMINI_TAG_COUNT} relevant keywords in Kurdish. Do not use hashtags (#).
     The output MUST be ONLY a valid JSON array of objects. Each object must contain ONLY 'id', 'title', 'summary' (as an HTML string), and 'tags'. The 'id' MUST be the original article URL. Do not include any extra text or markdown.
     Input Data: {json.dumps(items_to_translate, ensure_ascii=False)}
     """
@@ -290,6 +329,7 @@ def translate_articles_gemini(articles_to_translate):
         return []
 
 ## Posting Functions & Main Logic
+# 🔥 FIXED: Added defensive check to prevent KeyError crash and guarantee image URL presence.
 def post_to_tumblr(client, article):
     logging.info(f"▶️ Posting to Tumblr '{article.get('title_ku', 'No Title')[:30]}...'")
     tags = [article['category_ku'], article['source']]
@@ -297,17 +337,21 @@ def post_to_tumblr(client, article):
         if article.get('generated_tags'): tags.extend(json.loads(article['generated_tags']))
     except json.JSONDecodeError: logging.warning("Could not parse generated_tags from database.")
     
+    # 🎯 Defensive Check for Image URL (must be present if it passed filtering)
+    image_url = article.get('urlToImage')
+    if not image_url:
+        logging.warning("Skipping Tumblr post: Article missing required 'urlToImage' data.")
+        return None
+        
     full_summary_html = article['summary_ku']
     source_html = f"<p class='text-center'><a class='link-secondary link-offset-3' href='{article['url']}' target='_blank'>{article['source']}</a></p>"
     
     try:
-        if article.get('urlToImage'):
-            summary_with_more_tag = full_summary_html.replace('</p>', '</p>[[MORE]]', 1)
-            caption_html = f"<h5 class='card-title lh-base pt-1'>{article['title_ku']}</h5>{summary_with_more_tag}{source_html}"
-            response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=article['urlToImage'], caption=caption_html, link=article['url'], format="html")
-        else:
-            description_html = f"<p class='card-text text-muted 1h-base'>{full_summary_html}</p>{source_html}"
-            response = client.create_link(TUMBLR_BLOG_NAME, state="published", title=article['title_ku'], url=article['url'], description=description_html, tags=tags, format="html")
+        summary_with_more_tag = full_summary_html.replace('</p>', '</p>[[MORE]]', 1)
+        caption_html = f"<h5 class='card-title lh-base pt-1'>{article['title_ku']}</h5>{summary_with_more_tag}{source_html}"
+        
+        # Create a PHOTO post, safely using the retrieved image_url
+        response = client.create_photo(TUMBLR_BLOG_NAME, state="published", tags=tags, source=image_url, caption=caption_html, link=article['url'], format="html")
         
         post_id = response.get('id')
         if not post_id:
@@ -316,37 +360,53 @@ def post_to_tumblr(client, article):
             return None
 
         time.sleep(3)
+        # Attempt to verify post existence
         if client.posts(TUMBLR_BLOG_NAME, id=post_id).get('posts'):
-            logging.info(f"  - ✅ Verified Tumblr Post ID: {post_id}")
+            logging.info(f"  - ✅ Verified Tumblr Photo Post ID: {post_id}")
             return post_id
         else:
-            logging.warning("  - VERIFICATION FAILED. Post may have been dropped.")
+            logging.warning("  - VERIFICATION FAILED. Post may have been dropped.")
             send_failure_email(article.get('title_ku', 'N/A'))
             return None
     except Exception as e:
+        # This catches API/network errors, not missing keys.
         logging.error(f"An exception occurred during posting to Tumblr: {e}")
         return None
+
+# 🔥 FIXED: Enforced image requirement for Telegram to avoid text-only posts being marked as success.
 async def async_post_to_telegram(telegram_bot, article, see_more_url):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return False
     logging.info(f"▶️ Posting summary to Telegram: '{article.get('title_ku', 'No Title')[:30]}...'")
     title_ku, summary_html = article['title_ku'], article['summary_ku']
+    
     plain_text_summary = re.sub('<[^<]+?>', '', summary_html).strip()
     preview_text = (plain_text_summary[:450] + '...') if len(plain_text_summary) > 450 else plain_text_summary
+    
     post_text = f"<b>{title_ku}</b>\n\n{preview_text}\n\n<i><a href='{see_more_url}'>درێژەی بابەت...</a></i>"
+    
     try:
         image_url = article.get('urlToImage')
-        if image_url and is_image_url_valid(image_url):
-            await telegram_bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=image_url, caption=post_text, parse_mode='HTML')
-        else:
-            await telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=post_text, parse_mode='HTML', disable_web_page_preview=True)
-        logging.info("  - ✅ Telegram summary post sent successfully.")
+        
+        # 🎯 Enforce Image Requirement: If no image, return False immediately.
+        if not image_url:
+            logging.warning("  - ❌ Skipping Telegram post: Article is missing required 'urlToImage' for a media post.")
+            return False
+
+        # Send as photo with caption
+        await telegram_bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=image_url, caption=post_text, parse_mode='HTML')
+            
+        logging.info("  - ✅ Telegram photo post sent successfully.")
         return True
     except TelegramError as e:
-        logging.error(f"❌ Telegram posting failed (Error: {e}).")
+        # This catches errors like Telegram failing to fetch the provided image URL.
+        # This is the message you need to debug the Telegram API failure!
+        logging.error(f"❌ Telegram photo posting failed (Error: {e}).")
         return False
+        
     except Exception as e:
         logging.error(f"❌ An unexpected error occurred during Telegram posting: {e}")
         return False
+        
 def post_to_telegram(telegram_bot, article, see_more_url):
     try:
         loop = asyncio.get_event_loop()
@@ -354,8 +414,10 @@ def post_to_telegram(telegram_bot, article, see_more_url):
     except Exception as e:
         logging.error(f"❌ Synchronous Telegram wrapper failed: {e}")
         return False
+        
 async def async_check_telegram(telegram_bot):
     await telegram_bot.get_me()
+
 def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_key):
     logging.info("--- Starting new cycle ---")
     try:
@@ -364,7 +426,10 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
             for i, (category_code, config) in enumerate(categories_to_process.items()):
                 if i > 0: logging.info("")
                 logging.info(f"--- Processing Category: {config['name']} ---")
+                
+                # 🎯 Cooldown fix implemented in is_on_cooldown
                 if is_on_cooldown(conn, category_code): continue
+                
                 new_articles = fetch_and_filter_news(conn, selected_country, category_code, config)
                 if new_articles:
                     add_articles_to_db(conn, new_articles)
@@ -372,7 +437,8 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
 
             articles_to_translate = get_articles_by_status(conn, STATUS_FETCHED)
             if articles_to_translate:
-                logging.info(f"\n--- Found {len(articles_to_translate)} articles to translate ---")
+                # 📢 IMPROVED LOG: Show queue size for translation
+                logging.info(f"\n--- Found {len(articles_to_translate)} articles to translate (Queue Size) ---")
                 for i in range(0, len(articles_to_translate), TRANSLATION_CHUNK_SIZE):
                     chunk = articles_to_translate[i:i + TRANSLATION_CHUNK_SIZE]
                     logging.info(f"Processing translation chunk {i//TRANSLATION_CHUNK_SIZE + 1}...")
@@ -385,26 +451,35 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
             articles_to_post = get_articles_by_status(conn, STATUS_TRANSLATED)
             if articles_to_post:
                 if POST_TO_TUMBLR or POST_TO_TELEGRAM:
-                    # **CORRECTED LINE:** Use .get() with a default value to prevent KeyError
+                    # 📢 IMPROVED LOG: Show queue size for posting
+                    logging.info(f"\n--- Found {len(articles_to_post)} translated articles to post (Queue Size) ---")
+                    
                     articles_to_post.sort(
                         key=lambda x: x.get('publishedAt', datetime.min.isoformat()), 
                         reverse=False
                     )
-                    logging.info(f"\n--- Found {len(articles_to_post)} translated articles to post ---")
+                    
                     for article in articles_to_post:
                         tumblr_post_id, telegram_posted = None, False
+                        
                         if POST_TO_TUMBLR:
                             tumblr_post_id = post_to_tumblr(tumblr_client, article)
+                            
+                        # Post to Telegram using the Tumblr URL if available
                         if POST_TO_TELEGRAM:
+                            # Pass article['url'] if Tumblr failed or is disabled
                             see_more_url = f"https://{TUMBLR_BLOG_NAME}.tumblr.com/post/{tumblr_post_id}" if tumblr_post_id else article['url']
                             telegram_posted = post_to_telegram(telegram_bot, article, see_more_url)
+                            
+                        # Only mark as posted if at least one platform successfully posted a media version
                         if tumblr_post_id or telegram_posted:
                             update_article_status(conn, article['url'], STATUS_POSTED)
                             logging.info(f"Article '{article['title_ku'][:30]}...' marked as posted.")
                             pause = random.uniform(180, 300)
-                            logging.info(f"   - Pausing for {pause:.1f} seconds...")
+                            logging.info(f"    - Pausing for {pause:.1f} seconds...")
                             time.sleep(pause)
                         else:
+                            # If all attempts failed (including media-required Telegram post), it retries next cycle
                             logging.warning("All active posts failed for article. It will be retried next cycle.")
                 else:
                     logging.info("\nℹ️ Posting to Tumblr and Telegram is disabled in config. Skipping posting stage.")
@@ -413,6 +488,7 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
         # The script will pause and retry in the main loop.
         raise
     logging.info("--- Cycle complete ---")
+
 def main():
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
