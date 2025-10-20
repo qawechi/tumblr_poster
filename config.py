@@ -2,21 +2,23 @@
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 # --- Folder and File Configuration ---
+# The DATA_DIR and LOGS_DIR are still useful for logs, but the DB file is no longer needed.
 DATA_DIR = 'data'
 LOGS_DIR = 'logs'
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
-
-# Main data files
-DATABASE_FILE = os.path.join(DATA_DIR, 'news_bot.db')
 LOG_FILE = os.path.join(LOGS_DIR, 'script.log')
 
+# --- Database Connection ---
+# Use the online PostgreSQL database URL from the .env file
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 # --- API Keys ---
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWS_API_KEYS_STRING = os.getenv("NEWS_API_KEYS", "")
+NEWS_API_KEYS = [key.strip() for key in NEWS_API_KEYS_STRING.split(',') if key.strip()]
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TUMBLR_CONSUMER_KEY = os.getenv("TUMBLR_CONSUMER_KEY")
 TUMBLR_CONSUMER_SECRET = os.getenv("TUMBLR_CONSUMER_SECRET")
@@ -29,12 +31,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # --- Script Settings ---
+USE_SELENIUM_SCRAPING = os.getenv("USE_SELENIUM_SCRAPING", "false").lower() == "true"
+TARGET_COUNTRY = os.getenv("TARGET_COUNTRY", "us")
+TARGET_CATEGORY = os.getenv("TARGET_CATEGORY", "all")
 TIMEZONE = 'Asia/Baghdad'
 FETCH_COOLDOWN_HOURS = 2
 TRANSLATION_CHUNK_SIZE = 80
 GEMINI_TAG_COUNT = 4
 CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "60"))
-PROMPT_TIMEOUT_SECONDS = 5 # NEW: Timeout for user input prompts
 
 # --- Posting Platform Toggles ---
 POST_TO_TUMBLR = os.getenv("POST_TO_TUMBLR", "true").lower() == "true"

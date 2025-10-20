@@ -1,30 +1,19 @@
 @ECHO OFF
-:: The quotes around the title fix the "'Runner' is not recognized" error
-TITLE "News Bot Setup & Runner"
+TITLE "Nozhin News Bot Runner"
+CLS
 
-:: =================================================================
-:: CRITICAL FIX: Set event loop policy for stable asyncio on Windows (Python 3.8+)
-:: This resolves the "no current event loop" error.
-SET ASYNCIO_EVENT_LOOP_POLICY=asyncio.WindowsSelectorEventLoopPolicy
+:: Set event loop policy for stable asyncio on Windows (Python 3.8+)
+SET ASYCIO_EVENT_LOOP_POLICY=asyncio.WindowsSelectorEventLoopPolicy
 
-:: =================================================================
-:: Section 1: Install Dependencies
-:: =================================================================
+ECHO  ======================================================
+ECHO   Starting the Nozhin News Bot...
+ECHO  ======================================================
 ECHO.
-ECHO [1/4] Checking and installing Python packages...
-pip install -r requirements.txt --quiet
-ECHO     - All required packages are installed/verified.
-
-:: =================================================================
-:: Section 2 & 3: Run the Python setup script
-:: =================================================================
-python setup.py
-
-:: =================================================================
-:: Section 4: Run the main application
-:: =================================================================
+ECHO  - The bot is now running.
+ECHO  - It will fetch, translate, and post articles in cycles.
+ECHO  - Press CTRL+C in this window to stop the bot.
 ECHO.
-ECHO [4/4] All setup is complete. Starting the main news bot...
-ECHO =================================================================
+ECHO  ======================================================
 ECHO.
+
 python main.py
