@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # --- Script Settings ---
 TIMEZONE = 'Asia/Baghdad'
-FETCH_COOLDOWN_HOURS = 2
+FETCH_COOLDOWN_HOURS = 0
 TRANSLATION_CHUNK_SIZE = 50
 GEMINI_TAG_COUNT = 4
 CYCLE_COOLDOWN_MINUTES = int(os.getenv("CYCLE_COOLDOWN_MINUTES", "60"))
@@ -69,7 +69,7 @@ COUNTRIES = {
 # --- Category Definitions ---
 CATEGORIES = {
     'kurdistan': {'name': 'Kurdistan', 'endpoint': 'everything', 'params': {'q': 'kurd OR kurdistan OR Kurdish OR kurds', 'searchIn': 'title,description', 'pageSize': 5}},
-    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general', 'pageSize': 5}},
+    'general': {'name': 'General', 'endpoint': 'top-headlines', 'params': {'category': 'general', 'pageSize': 20}},
     'business': {'name': 'Business', 'endpoint': 'top-headlines', 'params': {'category': 'business', 'pageSize': 5}},
     'entertainment': {'name': 'Entertainment', 'endpoint': 'top-headlines', 'params': {'category': 'entertainment', 'pageSize': 5}},
     'health': {'name': 'Health', 'endpoint': 'top-headlines', 'params': {'category': 'health', 'pageSize': 5}},
