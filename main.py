@@ -385,7 +385,11 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
             articles_to_post = get_articles_by_status(conn, STATUS_TRANSLATED)
             if articles_to_post:
                 if POST_TO_TUMBLR or POST_TO_TELEGRAM:
-                    articles_to_post.sort(key=lambda x: x['publishedAt'], reverse=False)
+                    # **CORRECTED LINE:** Use .get() with a default value to prevent KeyError
+                    articles_to_post.sort(
+                        key=lambda x: x.get('publishedAt', datetime.min.isoformat()), 
+                        reverse=False
+                    )
                     logging.info(f"\n--- Found {len(articles_to_post)} translated articles to post ---")
                     for article in articles_to_post:
                         tumblr_post_id, telegram_posted = None, False
@@ -398,7 +402,7 @@ def run_cycle(tumblr_client, telegram_bot, selected_country, selected_category_k
                             update_article_status(conn, article['url'], STATUS_POSTED)
                             logging.info(f"Article '{article['title_ku'][:30]}...' marked as posted.")
                             pause = random.uniform(180, 300)
-                            logging.info(f"   - Pausing for {pause:.1f} seconds...")
+                            logging.info(f"   - Pausing for {pause:.1f} seconds...")
                             time.sleep(pause)
                         else:
                             logging.warning("All active posts failed for article. It will be retried next cycle.")
